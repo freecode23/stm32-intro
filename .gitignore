@@ -1,0 +1,16 @@
+# Ignore MacOS system files
+.DS_Store
+
+# Ignore STM32CubeIDE specific files
+.metadata/
+Debug/
+Release/
+
+# Ignore build output
+build/
+*.o
+*.d
+
+# Ignore other files that should not be in the repository
+*.log
+*.tmp
