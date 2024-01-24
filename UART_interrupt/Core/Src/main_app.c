@@ -2,24 +2,28 @@
  * main_app.c
  *
  *  Created on: Jan 23, 2024
- *      Author: sherlyhartono
+ *      Author: sherly hartono
  */
 
-
-#include "stm32f4xx_hal.h"
-#include "main_app.h"
 #include <string.h>
+#include "main_app.h"
+
+#define TRUE 1
+#define FALSE 0
 
 void SystemClockConfig(void);
 void UART2_Init(void);
 void Error_Handler(void);
 uint8_t convert_to_capital(uint8_t);
+uint8_t recvd_data;
+uint8_t data_buffer[100]; //
+uint32_t byte_count=0;
+uint8_t reception_complete = FALSE;
 
 // Handler of UART2
 UART_HandleTypeDef huart2;
 
-char *user_data = "The application is running\r\n";
-
+char *user_data = "The application is running interrupt\r\n";
 
 int main(void) {
 	// 1. Init hardware abstraction layer.
@@ -35,34 +39,14 @@ int main(void) {
 	uint16_t len_of_data = strlen(user_data);
 	HAL_UART_Transmit(&huart2, (uint8_t*)user_data, len_of_data, HAL_MAX_DELAY);
 
-
-	// 4. Create buffer for data received from UART buffer.
-	uint8_t rcvd_data;
-	uint8_t data_buffer[100]; //
-	uint32_t byte_count=0;
-
-	// 5. Convert to capital.
-	while(1)
-	{
-		// Receive 1 byte at a time to rcvd_data buffer.
-		// Make sure check local echo in terminal setting in CooolTerm
-		// so we can send character over uart. make sure to receive CR and LF.
-		HAL_UART_Receive(&huart2 ,&rcvd_data, 1, HAL_MAX_DELAY);
-		if(rcvd_data == '\r') // If user press enter quite while loop.
-		{
-			break;
-		}
-		else
-		{
-			data_buffer[byte_count++]= convert_to_capital(rcvd_data);
-		}
-	}
-
-	data_buffer[byte_count++]= '\r';
-
-	// 6. Send back character.
-	HAL_UART_Transmit(&huart2, data_buffer, byte_count, HAL_MAX_DELAY);
-
+	// 4. Convert to capital Interrupt base.
+    while(reception_complete != TRUE)
+    {
+    	// When received data is complete, UART will issue interrupt to processor
+    	// and HAL_UART_IRQHandler(&huart2); in it.c will be called.
+    	// And the interrupt will get processed under that HAL IRQ handler function.
+    	HAL_UART_Receive_IT(&huart2, &recvd_data,1);
+    }
 	while(1);
 
 	return 0;
@@ -112,7 +96,24 @@ void Error_Handler(void) {
 		 * maybe blink LED if there are errors.
 		 */
 	}
+}
 
+/**
+ * This function will be called when interrupt from UART is triggered.
+ *
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	 if(recvd_data == '\r')
+	 {
+		 reception_complete = TRUE;
+		 data_buffer[byte_count++]='\r'; // Make sure the last one is carriage return
+		 HAL_UART_Transmit(huart, data_buffer, byte_count, HAL_MAX_DELAY);
+	 }
+	 else
+	 {
+		 data_buffer[byte_count++] = convert_to_capital(recvd_data);
+	 }
 }
 
 uint8_t convert_to_capital(uint8_t data)
