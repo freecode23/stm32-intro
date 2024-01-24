@@ -4,6 +4,9 @@
  * MSP stands for MCU Support Package. MSPs are user callback functions that perform
  * initializations at the system level,
  * such as GPIOs, interrupts, DMA, and clock.
+ *
+ * Created on: Jan 23, 2024
+ *      Author: sherlyhartono
  */
 
 #include "stm32f4xx_hal.h"
