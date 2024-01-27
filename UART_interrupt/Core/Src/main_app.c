@@ -47,6 +47,8 @@ int main(void) {
     	// And the interrupt will get processed under that HAL IRQ handler function.
     	HAL_UART_Receive_IT(&huart2, &recvd_data,1);
     }
+
+
 	while(1);
 
 	return 0;
@@ -85,7 +87,7 @@ void UART2_Init(void) {
 	}
 
 	// 2. Initialize GPIO (we don't need to initialize handler). We can
-	// iNitialize the uart direcyly in HAL_UART_MspInit.
+	// initialize the uart directly in HAL_UART_MspInit.
 
 }
 

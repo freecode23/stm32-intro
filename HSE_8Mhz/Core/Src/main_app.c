@@ -19,7 +19,7 @@ void Error_Handler(void);
 // Handler of UART2
 UART_HandleTypeDef huart2;
 
-char *user_data = "The application is running interrupt\r\n";
+char *welcome_msg = "The application HSE_8Mhz is running.\r\n";
 
 int main(void) {
 	// 1. Oscillator (actual clock)
@@ -37,8 +37,7 @@ int main(void) {
 	// Remove garbage in osc_init by memset to 0.
 	memset(&osc_init, 0, sizeof(osc_init));
 	osc_init.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-//    osc_init.HSEState = RCC_HSE_ON;
-	osc_init.HSIState = RCC_HSI_ON;
+    osc_init.HSEState = RCC_HSE_ON;
 
     // - Call the api with our struct.
     // It will wait until the oscillator is ready.
@@ -47,18 +46,17 @@ int main(void) {
     	Error_Handler();
     }
 
-    // 5. Initialize the bus clock.
+    // 5. Initialize the CPU, AHB and APB buses clocks
     clk_init.ClockType = RCC_CLOCKTYPE_SYSCLK | RCC_CLOCKTYPE_HCLK | \
     					RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-//    clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+    clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
 
-    clk_init.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
 
     // - Set the prescaler or divider value for AHB and APB bus.
-    clk_init.AHBCLKDivider = RCC_SYSCLK_DIV4;
+    clk_init.AHBCLKDivider = RCC_SYSCLK_DIV1;
     clk_init.APB1CLKDivider = RCC_HCLK_DIV2;
-    clk_init.APB2CLKDivider = RCC_HCLK_DIV2;
-    if( HAL_RCC_ClockConfig(&clk_init, FLASH_ACR_LATENCY_0WS) != HAL_OK)
+    clk_init.APB2CLKDivider = RCC_HCLK_DIV1;
+    if( HAL_RCC_ClockConfig(&clk_init, FLASH_LATENCY_0) != HAL_OK)
     {
     	Error_Handler();
     }
@@ -80,9 +78,11 @@ int main(void) {
      UART2_Init();
 
     // Print and send from UART.
+
+    HAL_UART_Transmit(&huart2, (uint8_t*)welcome_msg, strlen(welcome_msg), HAL_MAX_DELAY);
 	memset(msg,0,sizeof(msg));
 	sprintf(msg,"SYSCLK : %ldHz\r\n",HAL_RCC_GetSysClockFreq());
-	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg),HAL_MAX_DELAY);
 
 	memset(msg,0,sizeof(msg));
 	sprintf(msg,"HCLK   : %ldHz\r\n",HAL_RCC_GetHCLKFreq());
