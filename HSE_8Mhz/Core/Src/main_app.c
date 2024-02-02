@@ -68,18 +68,18 @@ int main(void) {
     /* LETS REDO THE SYSTICK CONFIGURATION */
     // Generate interrupt at every 1ms.
     // init systick, enable interrupt, we are overriding the default
-    // previously set by HAL_Init();
+    // previously set by HAL_Init() since we now have different HCLK.
      HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
 
-     // Set the Cortex system timer.
+     // Set the MCU source clock for SYSTICK.
      HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
 
      // Update UART since the APB clock has been changed.
      UART2_Init();
 
     // Print and send from UART.
-
     HAL_UART_Transmit(&huart2, (uint8_t*)welcome_msg, strlen(welcome_msg), HAL_MAX_DELAY);
+
 	memset(msg,0,sizeof(msg));
 	sprintf(msg,"SYSCLK : %ldHz\r\n",HAL_RCC_GetSysClockFreq());
 	HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg),HAL_MAX_DELAY);

@@ -25,10 +25,29 @@ int main(void) {
 
 	// Init UART and Hardware abstraction API.
 	HAL_Init();
-	UART2_Init();
 
+	SystemClockConfig(SYS_CLOCK_FREQ_50_MHZ);
 
-	SystemClockConfig();
+    // Update UART here since the APB clock has been changed.
+	// If we don't reinitialize it will give garbage value.
+    UART2_Init();
+
+	char msg[200];
+	memset(msg,0,sizeof(msg));
+	sprintf(msg,"SYSCLK : %luHz\r\n",HAL_RCC_GetSysClockFreq());
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg, strlen(msg),HAL_MAX_DELAY);
+
+	memset(msg,0,sizeof(msg));
+	sprintf(msg,"HCLK   : %luHz\r\n",HAL_RCC_GetHCLKFreq());
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+	memset(msg,0,sizeof(msg));
+	sprintf(msg,"PCLK1  : %luHz\r\n",HAL_RCC_GetPCLK1Freq());
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
+
+	memset(msg,0,sizeof(msg));
+	sprintf(msg,"PCLK2  : %luHz\r\n",HAL_RCC_GetPCLK2Freq());
+	HAL_UART_Transmit(&huart2,(uint8_t*)msg,strlen(msg),HAL_MAX_DELAY);
 
 
 	return 0;
@@ -98,6 +117,7 @@ void SystemClockConfig(uint8_t clock_freq)
 		}
 		case SYS_CLOCK_FREQ_120_MHZ:
 		{
+			__HAL_RCC_PWR_CLK_ENABLE();
 			// Oscillator setup.
 			osc_init.PLL.PLLM = 16;
 			osc_init.PLL.PLLN = 240;
@@ -128,13 +148,13 @@ void SystemClockConfig(uint8_t clock_freq)
 	// Initialize RCC with oscillator config.
 	if(HAL_RCC_OscConfig(&osc_init) != HAL_OK)
 	{
-		Error_handler();
+		Error_Handler();
 	}
 
 	// Initialize RCC with clock config.
 	if(HAL_RCC_ClockConfig(&clk_init, FLatency) != HAL_OK)
 	{
-		Error_handler();
+		Error_Handler();
 	}
 
 
@@ -142,6 +162,7 @@ void SystemClockConfig(uint8_t clock_freq)
 	HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/1000);
 
 	HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+
 
 
 }
