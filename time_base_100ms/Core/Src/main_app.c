@@ -33,7 +33,7 @@ int main(void)
 
 	while(1)
 	{
-		// Loop until update event happens which set the status register to 1.
+		// Loop until update event happens which set the timer 6's status register to 1.
 		// TIM_SR_UIF just means 1 << 0;
 		// UIF stands for Update Interrupt Flag
 		while( ! (TIM6->SR & TIM_SR_UIF) );

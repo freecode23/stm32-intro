@@ -27,7 +27,7 @@ int main(void)
 
 
 	// Start the base timer.
-	// THhis will enable the counter through TIM_CR1_CEN_Msk
+	// This will enable the counter through TIM_CR1_CEN_Msk.
 	HAL_TIM_Base_Start_IT(&htimer6);
 
 	while(1);
@@ -42,13 +42,14 @@ int main(void)
 void TIMER6_Init(void)
 {
 	htimer6.Instance = TIM6;
-	htimer6.Init.Prescaler = 24;
+	htimer6.Init.Prescaler = 249;
 
 	// The number of ticks (stored in ARR).
 	// We should subtract by 1 because the event is actually tirggered on
 	// period + 1 tick. Which means at 64001 tick.
 	// Which gives the total period of 64001 tick. That's why we should subtract by 1
 	// from the number we compute.
+	// this update event triggers an interrupt.
 	htimer6.Init.Period = 64000-1;
 
 
@@ -59,11 +60,6 @@ void TIMER6_Init(void)
 	}
 }
 
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
-{
-	HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
-
-}
 
 /**
  * Initilize GPIO to toggle the LED pin.
@@ -94,6 +90,11 @@ void GPIO_Init(void)
 
 	// Initialize GPIO at port D.
 	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
+{
+	HAL_GPIO_TogglePin(GPIOD, LD6_Pin);
 }
 
 
