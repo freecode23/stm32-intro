@@ -15,85 +15,88 @@
  * Set up processor-specific features like NVIC priority configuration and system exception handling.
  */
 void HAL_MspInit(void) {
+	/* USER CODE BEGIN MspInit 0 */
 
-	// 1. Set up the priority grouping of the arm cortex mx processor
-	HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+	/* USER CODE END MspInit 0 */
 
-	// 2. Enable the required system exceptions of the arm cortex mx processor
-	// The SHCSR enables the system handlers, and indicates:
-	// the pending status of the BusFault, MemManage fault, and SVC exceptions
-	// the active status of the system handlers.
-	// Insert 111 into the bit 16, 17, 18 to e three system exceptions:
-	// the usage fault, bus fault, and memory management fault.
-	SCB->SHCSR |= 0x7 << 16;
+	__HAL_RCC_SYSCFG_CLK_ENABLE();
+	__HAL_RCC_PWR_CLK_ENABLE();
 
-	// 3. Configure the priority for the system exceptions. (Optional)
-	// Highest priority for all.
-	// Systick is already set up by hal init. Don't need to set priority here.
-	HAL_NVIC_SetPriority(MemoryManagement_IRQn, 0, 0);
-	HAL_NVIC_SetPriority(BusFault_IRQn, 0, 0);
-	HAL_NVIC_SetPriority(UsageFault_IRQn, 0, 0);
+	HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_0);
+
+	/* System interrupt init*/
+
+	/* USER CODE BEGIN MspInit 1 */
+
+	/* USER CODE END MspInit 1 */
 }
 
 /**
- * Initialize General Purpose timer2 with Input Capture.
- * That is configure the timer peripheral to detect and record the time of occurrence of an event.
+ * Initialize General Purpose timer3 with Input Capture.
+ * This will configure the timer to detect and record the time of occurrence of an event.
  */
-void HAL_TIM_IC_MspInit(TIM_HandleTypeDef *htim) {
-//	GPIO_InitTypeDef tim2ch1_gpio;
-//
-//	// Step1. Enable the peripheral clock for the timer2 peripheral
-//	__HAL_RCC_TIM2_CLK_ENABLE();
-//	__HAL_RCC_GPIOA_CLK_ENABLE();
-//
-//	// Step2. Initialize GPIO pin to behave as timer2 channel1.
-//	// This itself will not define whether its input or output.
-//	// But since our timer is set as to detect input, this will be
-//	// the pin that will detect the rising input.
-//	tim2ch1_gpio.Pin = GPIO_PIN_0;
-//
-//	// - Alternate Function Push pull.
-//	// the pin is being used for a peripheral function beyond
-//	// the basic GPIO input or output – in this case, as an input for a timer channel.
-//	tim2ch1_gpio.Mode = GPIO_MODE_AF_PP;
-//
-//	// - Specifies the alternate function number that the pin should use.
-//	tim2ch1_gpio.Alternate = GPIO_AF1_TIM2;
-//
-//	// Initialize.
-//	HAL_GPIO_Init(GPIOA, &tim2ch1_gpio);
-//
-//	// Step3. NVIC settings.
-//	HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
-//	HAL_NVIC_EnableIRQ(TIM2_IRQn);
-
-	// Generated:
+void HAL_TIM_Base_MspInit(TIM_HandleTypeDef *htim_base) {
 	GPIO_InitTypeDef GPIO_InitStruct = { 0 };
-	if (htim->Instance == TIM2) {
-		/* USER CODE BEGIN TIM2_MspInit 0 */
+	if (htim_base->Instance == TIM3) {
 
-		/* USER CODE END TIM2_MspInit 0 */
-		/* Peripheral clock enable */
-		__HAL_RCC_TIM2_CLK_ENABLE();
+		// Step1. Enable the peripheral clock for the timer2 peripheral
+		__HAL_RCC_TIM3_CLK_ENABLE();
+		__HAL_RCC_GPIOC_CLK_ENABLE();
 
-		__HAL_RCC_GPIOA_CLK_ENABLE();
-		/**TIM2 GPIO Configuration
-		 PA0-WKUP     ------> TIM2_CH1
+		/**TIM3 GPIO Configuration
+		 PC6     ------> TIM3_CH1
 		 */
-		GPIO_InitStruct.Pin = GPIO_PIN_0;
+		// Step2. Initialize GPIO pin to behave as timer2 channel1.
+		// This itself will not define whether its input or output.
+		// But since our timer is set as to detect input, this will be
+		// the pin that will detect the rising input.
+		GPIO_InitStruct.Pin = GPIO_PIN_6;
+
+		// - Alternate Function Push pull.
+		// the pin is being used for a peripheral function beyond
+		// the basic GPIO input or output – in this case, as an input for a timer channel.
 		GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
 		GPIO_InitStruct.Pull = GPIO_NOPULL;
 		GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-		GPIO_InitStruct.Alternate = GPIO_AF1_TIM2;
-		HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-		/* TIM2 interrupt Init */
-		HAL_NVIC_SetPriority(TIM2_IRQn, 0, 0);
-		HAL_NVIC_EnableIRQ(TIM2_IRQn);
+		// - Specifies the alternate function number that the pin should use.
+		GPIO_InitStruct.Alternate = GPIO_AF2_TIM3;
+		HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+		// Step3. NVIC settings.
+		HAL_NVIC_SetPriority(TIM3_IRQn, 0, 0);
+		HAL_NVIC_EnableIRQ(TIM3_IRQn);
 
 	}
 }
 
+/**
+ * @brief TIM_Base MSP De-Initialization
+ * This function freeze the hardware resources used in this example
+ * @param htim_base: TIM_Base handle pointer
+ * @retval None
+ */
+void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim_base) {
+	if (htim_base->Instance == TIM3) {
+		/* USER CODE BEGIN TIM3_MspDeInit 0 */
+
+		/* USER CODE END TIM3_MspDeInit 0 */
+		/* Peripheral clock disable */
+		__HAL_RCC_TIM3_CLK_DISABLE();
+
+		/**TIM3 GPIO Configuration
+		 PC6     ------> TIM3_CH1
+		 */
+		HAL_GPIO_DeInit(GPIOC, GPIO_PIN_6);
+
+		/* TIM3 interrupt DeInit */
+		HAL_NVIC_DisableIRQ(TIM3_IRQn);
+		/* USER CODE BEGIN TIM3_MspDeInit 1 */
+
+		/* USER CODE END TIM3_MspDeInit 1 */
+	}
+
+}
 
 /**
  * Initialize UART peripheral at Pin2 and Pin3.
@@ -101,7 +104,7 @@ void HAL_TIM_IC_MspInit(TIM_HandleTypeDef *htim) {
 void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
 	GPIO_InitTypeDef gpio_uart;
 
-	// 1. Enable the clock for the USART2 peripheral as well as for GPIOA peripheral.
+// 1. Enable the clock for the USART2 peripheral as well as for GPIOA peripheral.
 	__HAL_RCC_USART2_CLK_ENABLE();
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 
