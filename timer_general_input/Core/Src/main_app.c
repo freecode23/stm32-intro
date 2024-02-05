@@ -45,7 +45,8 @@ int main(void) {
 	// Initialize peripherals.
 	UART2_Init();
 
-	// Init LSE to MCO1 so that timer 2 can capture input and compute the timer period of this LSE clock signal.
+	// Init MCO1 so that timer 2 can capture input and
+	// compute the timer period the clock signal sourced to MC01.
 	MC01_Configuration();
 
 	// Initialize input capture and start the timer.
