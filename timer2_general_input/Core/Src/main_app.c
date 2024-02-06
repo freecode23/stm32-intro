@@ -54,7 +54,7 @@ int main(void) {
 	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
 	while (1) {
 
-		// Question: It never prints is capture done is 1 here. eventhough the 3 lines below this will print 1.
+		// Question 1: It never prints is capture done is 1 here. eventhough the 3 lines below this will print 1.
 		logUART("\nComputing MCO1 freq:is_capture_done=%d", is_capture_done);
 		if (is_capture_done) {
 
@@ -128,6 +128,10 @@ void SystemClock_Config(void) {
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
 		Error_Handler();
 	}
+	// Question 2: Why is it when this is commented out, we still get callback from
+	// TIM_IC, even though there is no signal from MCO1 source.
+
+	// If I comment this out the while loop above never executes.
 //	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
 
