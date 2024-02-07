@@ -20,7 +20,6 @@
 void Error_Handler(void);
 void SystemClock_Config(void);
 void TIM3_Init(void);
-void MC01_Configuration(void);
 
 // UART helpers.
 void UART2_Init(void);
@@ -59,33 +58,32 @@ int main(void) {
 		logUART("Error initializing Gen Purpose timer with Input Capture \r\n");
 		Error_Handler();
 	}
-
-	logUART("init IC\r\n");
-
 	while (1) {
-		logUART("while loop\r\n");
+		logUART("\nwhile\r\n");
 		if (is_capture_done) {
+
 			if (input_captures[1] > input_captures[0])
 				capture_difference = input_captures[1] - input_captures[0];
 			else
 				capture_difference = (65535 - input_captures[0])
 						+ input_captures[1];
 
-			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq());
+//			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq());
+			logUART("input_captures[1]=%d\r\n", input_captures[1]);
 
 			timer3_cnt_freq = (HAL_RCC_GetPCLK1Freq() * 2)
 					/ (htim3.Init.Prescaler + 1);
-			logUART("\ntimer3_cnt_freq=%d\r\n", timer3_cnt_freq);
+//			logUART("\ntimer3_cnt_freq=%d\r\n", timer3_cnt_freq);
 
 			timer3_cnt_period = 1 / timer3_cnt_freq;
-			logUART("timer3_cnt_period=%d\r\n", timer3_cnt_period);
+//			logUART("timer3_cnt_period=%d\r\n", timer3_cnt_period);
 
 			// Compute the period of MCO1 signal.
 			user_signal_time_period = capture_difference * timer3_cnt_period;
-			logUART("user_signal_time_period=%d\r\n", user_signal_time_period);
+//			logUART("user_signal_time_period=%d\r\n", user_signal_time_period);
 
 			user_signal_freq = 1 / user_signal_time_period;
-			logUART("user_signal_freq=%d\r\n", user_signal_freq);
+//			logUART("user_signal_freq=%d\r\n", user_signal_freq);
 
 			is_capture_done = FALSE;
 
@@ -99,7 +97,7 @@ int main(void) {
  * Callback when interrupt is triggered in input capture of timer3.
  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-//	logUART("callback capture value=%d\r\n", __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1));
+	logUART("callback capture value=%d\r\n", __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1));
 
 	if (!is_capture_done) {
 		if (count == 1) {
@@ -115,48 +113,49 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 	}
 }
 
-/**
- * Init RCC clock.
- */
-void SystemClock_Config(void) {
-	RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
-	RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
 
-	/** Configure the main internal regulator output voltage
-	 */
-	__HAL_RCC_PWR_CLK_ENABLE();
-	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+void SystemClock_Config(void)
+{
+  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
+  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
-	/** Initializes the RCC Oscillators according to the specified parameters
-	 * in the RCC_OscInitTypeDef structure.
-	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-	RCC_OscInitStruct.PLL.PLLM = 8;
-	RCC_OscInitStruct.PLL.PLLN = 50;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
-	RCC_OscInitStruct.PLL.PLLQ = 7;
-	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
-		Error_Handler();
-	}
+  /** Configure the main internal regulator output voltage
+  */
+  __HAL_RCC_PWR_CLK_ENABLE();
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-	/** Initializes the CPU, AHB and APB buses clocks
-	 */
-	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+  /** Initializes the RCC Oscillators according to the specified parameters
+  * in the RCC_OscInitTypeDef structure.
+  */
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
+  {
+    Error_Handler();
+  }
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
-		Error_Handler();
-	}
-	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
+  /** Initializes the CPU, AHB and APB buses clocks
+  */
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
+                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSE;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  // Question: If the source is the same as SYSCLKSource it will not work.
+  // i.e. Callback not called.
+  // Has to be different source clock.
+  // But if callback is called, we will never enter the while loop.
+  HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
+
 
 
 /**
