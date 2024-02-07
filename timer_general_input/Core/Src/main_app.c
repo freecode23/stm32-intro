@@ -20,6 +20,7 @@
 void Error_Handler(void);
 void SystemClock_Config(void);
 void TIM3_Init(void);
+static void MX_GPIO_Init(void);
 
 // UART helpers.
 void UART2_Init(void);
@@ -29,7 +30,7 @@ UART_HandleTypeDef huart2;
 
 // Timer 2 and captures variable.
 TIM_HandleTypeDef htim3;
-uint32_t input_captures[2] = { 0 };
+volatile uint32_t input_captures[2] = { 0 };
 uint8_t count = 1;
 volatile uint8_t is_capture_done = FALSE;
 
@@ -45,6 +46,7 @@ int main(void) {
 	SystemClock_Config();
 
 	// Initialize peripherals.
+	MX_GPIO_Init();
 	UART2_Init();
 	TIM3_Init();
 
@@ -53,13 +55,12 @@ int main(void) {
 		logUART("Error initializing Base timer \r\n");
 		Error_Handler();
 	}
-
 	if (HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1) != HAL_OK) {
 		logUART("Error initializing Gen Purpose timer with Input Capture \r\n");
 		Error_Handler();
 	}
+	logUART("\nbefore while loop\r\n");
 	while (1) {
-		logUART("\nwhile\r\n");
 		if (is_capture_done) {
 
 			if (input_captures[1] > input_captures[0])
@@ -69,7 +70,7 @@ int main(void) {
 						+ input_captures[1];
 
 //			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq());
-			logUART("input_captures[1]=%d\r\n", input_captures[1]);
+//			logUART("input_captures[1]=%d\r\n", input_captures[1]);
 
 			timer3_cnt_freq = (HAL_RCC_GetPCLK1Freq() * 2)
 					/ (htim3.Init.Prescaler + 1);
@@ -86,9 +87,7 @@ int main(void) {
 //			logUART("user_signal_freq=%d\r\n", user_signal_freq);
 
 			is_capture_done = FALSE;
-
 		}
-
 	}
 	return 0;
 }
@@ -97,7 +96,7 @@ int main(void) {
  * Callback when interrupt is triggered in input capture of timer3.
  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-	logUART("callback capture value=%d\r\n", __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1));
+//	logUART("callback capture value=%d\r\n", __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1));
 
 	if (!is_capture_done) {
 		if (count == 1) {
@@ -109,7 +108,6 @@ void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
 			count = 1;
 			is_capture_done = TRUE;
 		}
-
 	}
 }
 
@@ -149,13 +147,14 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 
-  // Question: If the source is the same as SYSCLKSource it will not work.
-  // i.e. Callback not called.
-  // Has to be different source clock.
-  // But if callback is called, we will never enter the while loop.
+  // Bug:
+  // If the source clock for MC01 is the same as SYSCLKSource interrupt will not be
+  // triggered and the timer callback is never called.
+  // MC0 have to be set to source from a different clock than SYCLKSource.
+  // This will trigger the interrupt correctly, but we never enter the while loop in the main function, i.e.
+  // the interrupt for timer is called infinitely before we even enter the while loop.
   HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
-
 
 
 /**

@@ -104,7 +104,7 @@ void HAL_TIM_Base_MspDeInit(TIM_HandleTypeDef *htim_base) {
 void HAL_UART_MspInit(UART_HandleTypeDef *huart) {
 	GPIO_InitTypeDef gpio_uart;
 
-// 1. Enable the clock for the USART2 peripheral as well as for GPIOA peripheral.
+	// 1. Enable the clock for the USART2 peripheral as well as for GPIOA peripheral.
 	__HAL_RCC_USART2_CLK_ENABLE();
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 
