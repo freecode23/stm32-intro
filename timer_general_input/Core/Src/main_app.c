@@ -50,8 +50,20 @@ int main(void) {
 	TIM3_Init();
 
 	// Start Timer3.
-	HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1);
+	if (HAL_TIM_Base_Start_IT(&htim3) != HAL_OK) {
+		logUART("Error initializing Base timer \r\n");
+		Error_Handler();
+	}
+
+	if (HAL_TIM_IC_Start_IT(&htim3, TIM_CHANNEL_1) != HAL_OK) {
+		logUART("Error initializing Gen Purpose timer with Input Capture \r\n");
+		Error_Handler();
+	}
+
+	logUART("init IC\r\n");
+
 	while (1) {
+		logUART("while loop\r\n");
 		if (is_capture_done) {
 			if (input_captures[1] > input_captures[0])
 				capture_difference = input_captures[1] - input_captures[0];
@@ -59,7 +71,7 @@ int main(void) {
 				capture_difference = (65535 - input_captures[0])
 						+ input_captures[1];
 
-			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq()); // 16Hz
+			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq());
 
 			timer3_cnt_freq = (HAL_RCC_GetPCLK1Freq() * 2)
 					/ (htim3.Init.Prescaler + 1);
@@ -81,6 +93,26 @@ int main(void) {
 
 	}
 	return 0;
+}
+
+/**
+ * Callback when interrupt is triggered in input capture of timer3.
+ */
+void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
+//	logUART("callback capture value=%d\r\n", __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1));
+
+	if (!is_capture_done) {
+		if (count == 1) {
+			input_captures[0] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
+			count++;
+
+		} else if (count == 2) {
+			input_captures[1] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
+			count = 1;
+			is_capture_done = TRUE;
+		}
+
+	}
 }
 
 /**
@@ -126,27 +158,10 @@ void SystemClock_Config(void) {
 	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
 
+
 /**
- * Callback when interrupt is triggered in input capture of timer3.
+ * Initialize timer 3 for input capture at PIN PC6.
  */
-void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-//	logUART("callback\r\n");
-	logUART("count is=%d\r\n", count);
-
-	if (!is_capture_done) {
-		if (count == 1) {
-			input_captures[0] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
-			count++;
-
-		} else if (count == 2) {
-			input_captures[1] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
-			count = 1;
-			is_capture_done = TRUE;
-		}
-
-	}
-}
-
 void TIM3_Init(void) {
 
 	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
@@ -192,7 +207,6 @@ void TIM3_Init(void) {
 	if (HAL_TIM_IC_ConfigChannel(&htim3, &sConfigIC, TIM_CHANNEL_1) != HAL_OK) {
 		Error_Handler();
 	}
-
 }
 
 /**
@@ -242,7 +256,6 @@ void logUART(const char *format, ...) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) usr_msg, strlen(usr_msg),
 	HAL_MAX_DELAY);
 }
-
 
 void Error_Handler(void) {
 	while (1) {

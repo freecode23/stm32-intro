@@ -4,7 +4,7 @@
  */
 
 #include "main_app.h"
-extern TIM_HandleTypeDef htimer2;
+extern TIM_HandleTypeDef htim2;
 /**
  * SysTick, short for "System Tick Timer," is a basic, built-in timer in ARM Cortex-M microcontrollers, including STM32 series.
  * SysTick timer generates an interrupt at a fixed interval, defined by its configuration.
@@ -24,5 +24,5 @@ void SysTick_Handler (void)
 
 void TIM2_IRQHandler(void)
 {
-	HAL_TIM_IRQHandler(&htimer2);
+	HAL_TIM_IRQHandler(&htim2);
 }

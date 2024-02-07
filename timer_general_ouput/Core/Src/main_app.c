@@ -17,40 +17,38 @@
 #include <stdio.h>
 #include <stdarg.h> // Include for va_list and related functions
 
-void SystemClockConfig(uint8_t clock_freq);
 void Error_Handler(void);
-
+void SystemClock_Config(void);
 void TIMER2_Init(void);
-void MC01_Configuration(void);
 
 // UART helpers.
 void UART2_Init(void);
 void logUART(const char *format, ...);
-
+TIM_HandleTypeDef htim2;
 UART_HandleTypeDef huart2;
-
-// Timer 2 and captures variable.
-TIM_HandleTypeDef htimer2;
-uint32_t input_captures[2] = { 0 };
-uint8_t count = 1;
+volatile uint32_t ccr_content;
 
 volatile uint32_t pulse1_value = 25000; //to produce 500Hz
-volatile uint32_t pulse2_value = 12500; //to produce 1000HZ
-volatile uint32_t pulse3_value = 6250;  //to produce 2000Hz
-volatile uint32_t pulse4_value = 3125;  //to produce 4000Hz
-
-volatile uint32_t ccr_content;
 
 int main(void) {
 
 	HAL_Init();
 
-	// Use default system config.
-	SystemClockConfig(SYS_CLOCK_FREQ_50_MHZ);
-
+	SystemClock_Config();
 	// Initialize peripherals.
 	UART2_Init();
 
+	TIMER2_Init();
+	if (HAL_TIM_Base_Start_IT(&htim2) != HAL_OK) {
+		logUART("Error initializing Base!!\r\n");
+		Error_Handler();
+	}
+	logUART("Finish init Base=\r\n");
+	if (HAL_TIM_OC_Start_IT(&htim2, TIM_CHANNEL_1) != HAL_OK) {
+		logUART("Error initializing OC!!\r\n");
+		Error_Handler();
+	}
+	logUART("Finish init OC=\r\n");
 	while (1) {
 
 	}
@@ -58,62 +56,63 @@ int main(void) {
 	return 0;
 }
 
+/**
+ * Callback when the the CCR register matches the pulse value.
+ */
+void HAL_TIM_OC_DelayElapsedCallback(TIM_HandleTypeDef *htim) {
+	logUART("Callback=\r\n");
+	/* TIM2_CH1 toggling with frequency = 500 Hz */
+	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
+		ccr_content = HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1);
+		logUART("crrContent=%d\r\n", ccr_content);
+
+		// Set the output of the GPIO as the increment of ccr value + pulse value.
+		__HAL_TIM_SET_COMPARE(htim, TIM_CHANNEL_1, ccr_content + pulse1_value);
+	}
+}
+
+/**
+ * Initialize timer2 Channel 1. for Output Compare at Pin PA15.
+ */
 void TIMER2_Init(void) {
 
-	// Step 1. Initialize the timer with `Input Capture` mode.
-	// Initialize timer.
-	htimer2.Instance = TIM2;
+	/* USER CODE BEGIN TIM2_Init 0 */
 
-	// Let it count up to the maximum value.
-	htimer2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	/* USER CODE END TIM2_Init 0 */
 
-	// Check in reference manual to check the maximum capacity of the counter of this general purpose timer.
-	// Timer 2 is 32 bit counter.
-	htimer2.Init.Period = 0XFFFFFFFF;
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+	TIM_OC_InitTypeDef sConfigOC = { 0 };
 
-	// Divide the timer clock.
-	// Timer count clock will be divided by this value +1. So our timer2 will be 25Mhz.
-	htimer2.Init.Prescaler = 1;
+	/* USER CODE BEGIN TIM2_Init 1 */
 
-	// Initialize timer with INPUT CAPTURE instead of base.
-	if (HAL_TIM_IC_Init(&htimer2) != HAL_OK) {
+	/* USER CODE END TIM2_Init 1 */
+	htim2.Instance = TIM2;
+	htim2.Init.Prescaler = 0;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 4294967295;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_OC_Init(&htim2) != HAL_OK) {
 		Error_Handler();
 	}
-
-	// Step 2. Configure the input capture.
-	TIM_OC_InitTypeDef timer2OC_Config;
-
-	timer2OC_Config.OCMode = TIM_OCMODE_TOGGLE;
-
-	// Select edge to read the signal.
-	timer2OC_Config.OCPolarity = TIM_OCNPOLARITY_HIGH;
-
-	timer2OC_Config.Pulse = pulse1_value;
-
-
-	// Configure the 4 channels
-	if (HAL_TIM_OC_ConfigChannel(&htimer2, &timer2OC_Config, TIM_CHANNEL_1)
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig)
 			!= HAL_OK) {
-		Error_handler();
+		Error_Handler();
 	}
+	sConfigOC.OCMode = TIM_OCMODE_TIMING;
+	sConfigOC.Pulse = 0;
+	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
 
-	timer2OC_Config.Pulse = pulse2_value;
-	if (HAL_TIM_OC_ConfigChannel(&htimer2, &timer2OC_Config, TIM_CHANNEL_2)
-			!= HAL_OK) {
-		Error_handler();
+	if (HAL_TIM_OC_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK) {
+		Error_Handler();
 	}
+	/* USER CODE BEGIN TIM2_Init 2 */
 
-	timer2OC_Config.Pulse = pulse3_value;
-	if (HAL_TIM_OC_ConfigChannel(&htimer2, &timer2OC_Config, TIM_CHANNEL_3)
-			!= HAL_OK) {
-		Error_handler();
-	}
+	/* USER CODE END TIM2_Init 2 */
 
-	timer2OC_Config.Pulse = pulse4_value;
-	if (HAL_TIM_OC_ConfigChannel(&htimer2, &timer2OC_Config, TIM_CHANNEL_4)
-			!= HAL_OK) {
-		Error_handler();
-	}
 }
 
 /**
@@ -144,56 +143,47 @@ void UART2_Init(void) {
 	}
 }
 
-void SystemClockConfig(uint8_t clock_freq) {
-	RCC_OscInitTypeDef Osc_Init;
-	RCC_ClkInitTypeDef Clock_Init;
-	uint8_t flash_latency = 0;
+/**
+ * Init RCC clock.
+ */
+void SystemClock_Config(void) {
+	RCC_OscInitTypeDef RCC_OscInitStruct = { 0 };
+	RCC_ClkInitTypeDef RCC_ClkInitStruct = { 0 };
 
-	Osc_Init.OscillatorType = RCC_OSCILLATORTYPE_HSE | RCC_OSCILLATORTYPE_LSE
-			| RCC_OSCILLATORTYPE_HSI;
-	Osc_Init.HSEState = RCC_HSE_ON;
-	Osc_Init.LSEState = RCC_LSE_ON;
-	Osc_Init.HSIState = RCC_HSI_ON;
-	Osc_Init.PLL.PLLState = RCC_PLL_ON;
-	Osc_Init.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+	/** Configure the main internal regulator output voltage
+	 */
+	__HAL_RCC_PWR_CLK_ENABLE();
+	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-	switch (clock_freq) {
-	case SYS_CLOCK_FREQ_50_MHZ:
-		Osc_Init.PLL.PLLM = 4;
-		Osc_Init.PLL.PLLN = 50;
-		Osc_Init.PLL.PLLP = RCC_PLLP_DIV2;
-		Osc_Init.PLL.PLLQ = 2;
-
-		Clock_Init.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
-				| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-		Clock_Init.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-		Clock_Init.AHBCLKDivider = RCC_SYSCLK_DIV1;
-		Clock_Init.APB1CLKDivider = RCC_HCLK_DIV2;
-		Clock_Init.APB2CLKDivider = RCC_HCLK_DIV1;
-		flash_latency = FLASH_ACR_LATENCY_1WS;
-		break;
-
-	default:
-		return;
-	}
-
-	if (HAL_RCC_OscConfig(&Osc_Init) != HAL_OK) {
+	/** Initializes the RCC Oscillators according to the specified parameters
+	 * in the RCC_OscInitTypeDef structure.
+	 */
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLM = 8;
+	RCC_OscInitStruct.PLL.PLLN = 50;
+	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+	RCC_OscInitStruct.PLL.PLLQ = 7;
+	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
 	}
 
-	if (HAL_RCC_ClockConfig(&Clock_Init, flash_latency) != HAL_OK) {
+	/** Initializes the CPU, AHB and APB buses clocks
+	 */
+	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
+			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
 		Error_Handler();
 	}
-
-	// Configure the systick timer interrupt frequency (for every 1 ms)
-	HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq() / 1000);
-
-	// Configure the Systick.
-	HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-
-	// SysTick_IRQn interrupt configuration
-	HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
-
+	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
 
 /**
@@ -220,7 +210,6 @@ void logUART(const char *format, ...) {
 
 void Error_Handler(void) {
 	while (1) {
-		logUART("ERROR!!");
 	}
 
 }

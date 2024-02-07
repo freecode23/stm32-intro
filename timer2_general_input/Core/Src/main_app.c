@@ -51,18 +51,21 @@ int main(void) {
 
 	// Start timer2.
 	HAL_TIM_Base_Start_IT(&htim2);
+
+	logUART("\nBefore IC start");
 	HAL_TIM_IC_Start_IT(&htim2, TIM_CHANNEL_1);
+	logUART("\nWhile 1");
 	while (1) {
 
-		// Question 1: It never prints is capture done is 1 here. eventhough the 3 lines below this will print 1.
-		logUART("\nComputing MCO1 freq:is_capture_done=%d", is_capture_done);
+		// Question 1: It never prints is capture done is 1 here. even though the 3 lines below this will print 1.
+		logUART("\nWhile loop=%d", is_capture_done);
 		if (is_capture_done) {
 
-			logUART("\nComputing MCO1 freq:is_capture_done=%d", is_capture_done);
+			logUART("\nWhile loop capture_is_done=%d", is_capture_done);
 			if (input_captures[1] > input_captures[0])
 				capture_difference = input_captures[1] - input_captures[0];
 			else
-				capture_difference = (65535 - input_captures[0])
+				capture_difference = (4294967295 - input_captures[0])
 						+ input_captures[1];
 
 			logUART("\nPCLK1 freq=%d\r\n", HAL_RCC_GetPCLK1Freq()); // 16Hz
@@ -130,82 +133,78 @@ void SystemClock_Config(void) {
 	}
 	// Question 2: Why is it when this is commented out, we still get callback from
 	// TIM_IC, even though there is no signal from MCO1 source.
-
 	// If I comment this out the while loop above never executes.
-//	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
+	HAL_RCC_MCOConfig(RCC_MCO1, RCC_MCO1SOURCE_HSI, RCC_MCODIV_1);
 }
 
 /**
  * Callback when interrupt is triggered in input capture of timer2.
  */
 void HAL_TIM_IC_CaptureCallback(TIM_HandleTypeDef *htim) {
-//	logUART("\ncount is=%d\r\n", count);
+	if (htim->Channel == HAL_TIM_ACTIVE_CHANNEL_1) {
+//		logUART("\nActive value = %d\r\n", HAL_TIM_ReadCapturedValue(htim, TIM_CHANNEL_1));
 
-	if (!is_capture_done) {
-		if (count == 1) {
-			input_captures[0] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
-			count++;
-			logUART("\ncount == 1; count++%d\r\n", count);
+		if (!is_capture_done) {
+			if (count == 1) {
+				input_captures[0] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
+				count++;
+				//			logUART("\ncount == 1; count++%d\r\n", count);
 
-		} else if (count == 2) {
-			input_captures[1] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
-			count = 1;
-			is_capture_done = TRUE;
-			logUART("\ncount == 2; capture is done\r\n");
+			} else if (count == 2) {
+				input_captures[1] = __HAL_TIM_GET_COMPARE(htim, TIM_CHANNEL_1);
+				count = 1;
+				is_capture_done = FALSE;
+				//			logUART("\ncount == 2; capture is done\r\n");
+			}
 		}
 	}
 }
 
-void TIM2_Init(void)
-{
+void TIM2_Init(void) {
 
-  /* USER CODE BEGIN TIM2_Init 0 */
+	/* USER CODE BEGIN TIM2_Init 0 */
 
-  /* USER CODE END TIM2_Init 0 */
+	/* USER CODE END TIM2_Init 0 */
 
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
-  TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_IC_InitTypeDef sConfigIC = {0};
+	TIM_ClockConfigTypeDef sClockSourceConfig = { 0 };
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+	TIM_IC_InitTypeDef sConfigIC = { 0 };
 
-  /* USER CODE BEGIN TIM2_Init 1 */
+	/* USER CODE BEGIN TIM2_Init 1 */
 
-  /* USER CODE END TIM2_Init 1 */
-  htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 0;
-  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 4294967295;
-  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
-  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_TIM_IC_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
-  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
-  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
-  sConfigIC.ICFilter = 0;
-  if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN TIM2_Init 2 */
+	/* USER CODE END TIM2_Init 1 */
+	htim2.Instance = TIM2;
+	htim2.Init.Prescaler = 0;
+	htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim2.Init.Period = 4294967295;
+	htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim2) != HAL_OK) {
+		Error_Handler();
+	}
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK) {
+		Error_Handler();
+	}
+	if (HAL_TIM_IC_Init(&htim2) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	sConfigIC.ICPolarity = TIM_ICPOLARITY_RISING;
+	sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+	sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+	sConfigIC.ICFilter = 0;
+	if (HAL_TIM_IC_ConfigChannel(&htim2, &sConfigIC, TIM_CHANNEL_1) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM2_Init 2 */
 
-  /* USER CODE END TIM2_Init 2 */
+	/* USER CODE END TIM2_Init 2 */
 
 }
 
@@ -256,7 +255,6 @@ void logUART(const char *format, ...) {
 	HAL_UART_Transmit(&huart2, (uint8_t*) usr_msg, strlen(usr_msg),
 	HAL_MAX_DELAY);
 }
-
 
 void Error_Handler(void) {
 	while (1) {
