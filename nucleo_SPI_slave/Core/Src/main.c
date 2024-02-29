@@ -47,8 +47,8 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 char *listening_data = "Slave listening\r\n";
-char *receiving_data = "Slave received\r\n";
-uint8_t rxBuffer[5]; // Buffer to store received data, adjust size as needed
+char *receiving_data = "\nSlave received\r\n";
+uint8_t rxBuffer[10]; // Buffer to store received data, adjust size as needed
 HAL_StatusTypeDef receiveStatus;
 /* USER CODE END PV */
 
@@ -98,29 +98,32 @@ int main(void) {
 	/* USER CODE BEGIN 2 */
 	// For nucleo board, the USART is connected directly to USB.
 	// Don't need to connect pins.
-	uint16_t len_of_data = strlen(listening_data);
-	HAL_UART_Transmit(&huart2, (uint8_t*) listening_data, len_of_data,
-		HAL_MAX_DELAY);
-
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+
 	while (1) {
+	    memset(rxBuffer, 0, sizeof(rxBuffer)); // Clear buffer before receiving new data
 
 		// Attempt to receive data from the SPI master
-		receiveStatus = HAL_SPI_Receive(&hspi2, rxBuffer, sizeof(rxBuffer), HAL_MAX_DELAY);
+	    uint8_t expected_bytes = 5;
+		receiveStatus = HAL_SPI_Receive(&hspi2, rxBuffer, expected_bytes, HAL_MAX_DELAY);
+
 
 		// Check if data reception was successful
 		if (receiveStatus == HAL_OK) {
 
-			// Data received successfully, process it or send it over UART for debugging
-			HAL_UART_Transmit(&huart2, rxBuffer, sizeof(rxBuffer), HAL_MAX_DELAY);
+		    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+		    HAL_Delay(50);
+		    HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+		    HAL_Delay(50);
+
+
 		} else {
 			// Handle reception error, for example, by sending an error message over UART
 			char *errorMsg = "SPI Receive Error\r\n";
-			HAL_UART_Transmit(&huart2, (uint8_t*) errorMsg, strlen(errorMsg),
-			HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart2, (uint8_t*) errorMsg, strlen(errorMsg), HAL_MAX_DELAY);
 		}
 		/* USER CODE END WHILE */
 
