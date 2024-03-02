@@ -45,7 +45,7 @@ int main(void) {
     	// When received data is complete, UART will issue interrupt to processor
     	// and HAL_UART_IRQHandler(&huart2); in it.c will be called.
     	// And the interrupt will get processed under that HAL IRQ handler function.
-    	HAL_UART_Receive_IT(&huart2, &recvd_data,1);
+    	HAL_UART_Receive_IT(&huart2, &recvd_data, 1);
     }
 
 

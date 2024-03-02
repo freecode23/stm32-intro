@@ -38,7 +38,7 @@ int main(void) {
 
 	// 4. Create buffer for data received from UART buffer.
 	uint8_t rcvd_data;
-	uint8_t data_buffer[100]; //
+	uint8_t data_buffer[100];
 	uint32_t byte_count=0;
 
 	// 5. Convert to capital.
