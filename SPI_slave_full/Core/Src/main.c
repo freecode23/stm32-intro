@@ -120,6 +120,16 @@ int main(void) {
 
 		}
 
+		// 3. Transmit SPI data to master if we have received the first command.
+		if (send_data == 1) {
+			// Keep sending until there is some other interrupt.
+			HAL_SPI_Transmit(&hspi2, data, data_size_bytes, HAL_MAX_DELAY);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
+			HAL_Delay(500);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
+			HAL_Delay(500);
+		}
+
 
 	}
 	/* USER CODE END 3 */
