@@ -49,6 +49,7 @@ uint8_t new_cmd_in = 0;
 uint8_t data[] = { 'O', 'K' };
 uint16_t data_size_bytes = 2;
 uint8_t send_data = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -98,7 +99,6 @@ int main(void) {
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	// Step1: Set all peripherals to receive command from master and generate interrupt.
 	HAL_SPI_Receive_IT(&hspi2, cmd, 2);
 	while (1) {
 		/* USER CODE END WHILE */
@@ -106,25 +106,21 @@ int main(void) {
 		/* USER CODE BEGIN 3 */
 		// 1. Receive command.
 		if (new_cmd_in == 1) {
-			// Even if this logic takes a long time it can still be interrupted.
-			// Let's say there is a UART interrupt here, once UART interrupt callback
-			// is done, it will resume wherever we left off.
 			new_cmd_in = 0;
 			send_data = 1;
 
 			// 2. Repeat receive cmd.
 			HAL_SPI_Receive_IT(&hspi2, cmd, 2);
-		}
 
-		// 3. Transmit SPI data to master if we have received the first command.
-		if (send_data == 1) {
-			// Keep sending until there is some other interrupt.
-			HAL_SPI_Transmit(&hspi2, data, data_size_bytes, HAL_MAX_DELAY);
+			// 3. Turn LED for 3 seconds to signal message is received.
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-			HAL_Delay(500);
+			HAL_Delay(3000);
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 			HAL_Delay(500);
+
 		}
+
+
 	}
 	/* USER CODE END 3 */
 }
@@ -165,7 +161,7 @@ void SystemClock_Config(void) {
 			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
 	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
 	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2) != HAL_OK) {

@@ -45,8 +45,8 @@ SPI_HandleTypeDef hspi1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-uint8_t cmd[] = { 1, 2 };
-uint8_t cmd_sent = 0;
+uint8_t cmd[] = { '1', '2' };
+uint8_t send_cmd = 0;
 
 uint8_t data[8];
 uint8_t new_data_in = 0;
@@ -72,7 +72,14 @@ static void MX_USART2_UART_Init(void);
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-
+	// 1. Master send command when blue button is pressed.
+	// 2. Slave will receive command and do the following:
+	// - reset flag that cmd has been received.
+	// - Turn on LED for 3 seconds.
+	// - Ready to receive next command.
+	// 3. Slave will continuously send data to master if `send_data` flag is set to 1.
+	//    With 100ms delay.
+	// 4. Master will receive data and send directly to UART.
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -106,36 +113,26 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		// 1. Send SPI command.
-		if (cmd_sent == 0) {
-			cmd_sent = 1;
+		if (send_cmd == 1) {
 			HAL_SPI_Transmit(&hspi1, (uint8_t*) cmd, 2,
 			HAL_MAX_DELAY);
 
+			send_cmd = 0;
+
 			// 2. Send UART sent confirmation.
-			char *sent_confirm_msg = "\ncmd sent to slave!\r\n";
-			HAL_UART_Transmit(&huart2, (uint8_t*) sent_confirm_msg,
-					strlen(sent_confirm_msg),
+			cmd[2] = '\r';
+			cmd[3] = '\n';
+ 			HAL_UART_Transmit(&huart2, (uint8_t*) cmd,
+					4,
 					HAL_MAX_DELAY);
+
+			// 2. Blink blue LED.
+			HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
+			HAL_Delay(1000);
+			HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
+			HAL_Delay(100);
+
 		}
-
-		// 3. Ready to receive SPI response data.
-		uint16_t data_size_bytes = 2;
-		memset(data, 0, sizeof(data));
-		HAL_SPI_Receive_IT(&hspi1, data, data_size_bytes);
-
-		// 4. If receive send to UART.
-		if (new_data_in == 1) {
-			// - Reset flag.
-			new_data_in = 0;
-
-			// - Add new lines.
-			data[2] = '\r';
-			data[3] = '\n';
-			HAL_UART_Transmit(&huart2, data, sizeof(data) + 2, HAL_MAX_DELAY);
-		}
-
-		HAL_Delay(1);
-
 	}
 	/* USER CODE END 3 */
 }
@@ -156,14 +153,10 @@ void SystemClock_Config(void) {
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLM = 4;
-	RCC_OscInitStruct.PLL.PLLN = 96;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-	RCC_OscInitStruct.PLL.PLLQ = 4;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
 	}
@@ -172,12 +165,12 @@ void SystemClock_Config(void) {
 	 */
 	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
 			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
 	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
+	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK) {
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
 		Error_Handler();
 	}
 }
@@ -204,7 +197,7 @@ static void MX_SPI1_Init(void) {
 	hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
 	hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
 	hspi1.Init.NSS = SPI_NSS_SOFT;
-	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_8;
+	hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
 	hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
 	hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
 	hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -276,7 +269,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -302,7 +296,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin : B1_Pin */
 	GPIO_InitStruct.Pin = B1_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
@@ -367,7 +361,7 @@ static void MX_GPIO_Init(void) {
 	/*Configure GPIO pins : Audio_SCL_Pin Audio_SDA_Pin */
 	GPIO_InitStruct.Pin = Audio_SCL_Pin | Audio_SDA_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-	GPIO_InitStruct.Pull = GPIO_PULLUP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -378,16 +372,23 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(MEMS_INT2_GPIO_Port, &GPIO_InitStruct);
 
+	/* EXTI interrupt init*/
+	HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
 	/* USER CODE BEGIN MX_GPIO_Init_2 */
 	/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi) {
-	if (hspi->Instance == hspi1.Instance) {
-		new_data_in = 1;
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	if (GPIO_Pin == GPIO_PIN_0) // Check if the interrupt comes from the button pin
+	{
+		// Toggle LED. Will stay on after toggle or will stay off.
+		send_cmd = 1;
 	}
 }
+
 /* USER CODE END 4 */
 
 /**
