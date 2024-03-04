@@ -107,29 +107,8 @@ int main(void) {
 		// 1. Receive command.
 		if (new_cmd_in == 1) {
 			new_cmd_in = 0;
-			send_data = 1;
-
-			// 2. Repeat receive cmd.
-			HAL_SPI_Receive_IT(&hspi2, cmd, 2);
-
-			// 3. Turn LED for 3 seconds to signal message is received.
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-			HAL_Delay(3000);
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-			HAL_Delay(500);
 
 		}
-
-		// 3. Transmit SPI data to master if we have received the first command.
-		if (send_data == 1) {
-			// Keep sending until there is some other interrupt.
-			HAL_SPI_Transmit(&hspi2, data, data_size_bytes, HAL_MAX_DELAY);
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-			HAL_Delay(500);
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-			HAL_Delay(500);
-		}
-
 
 	}
 	/* USER CODE END 3 */
@@ -260,9 +239,14 @@ static void MX_GPIO_Init(void) {
 
 /* USER CODE BEGIN 4 */
 void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi) {
-	if (hspi->Instance == hspi2.Instance) {
-		new_cmd_in = 1;
-	}
+
+	// 1. Keep sending until there is some other interrupt.
+	HAL_SPI_Transmit_IT(&hspi2, (uint8_t*) data, data_size_bytes);
+
+	// 2. Repeat receive cmd.
+	// Master want to sync.
+	HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, 2);
+
 }
 /* USER CODE END 4 */
 
