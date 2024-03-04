@@ -127,12 +127,10 @@ int main(void)
 				HAL_SPI_Transmit(&hspi1, (uint8_t*) cmd, 2,
 				HAL_MAX_DELAY);
 
-				// 2. Ready to receive SPI response data.
-				//			memset(data, 0, sizeof(data));
-				uint16_t data_size_bytes = 2;
-				HAL_SPI_Receive(&hspi1, (uint8_t*) data, 8, HAL_MAX_DELAY);
+				// 2. Ready to receive SPI response.
+				HAL_SPI_Receive(&hspi1, (uint8_t*) data, 2, HAL_MAX_DELAY);
 
-//				// 3. Send UART sent confirmation.
+				// 3. Send UART sent confirmation.
 				cmd[2] = '\r';
 				cmd[3] = '\n';
 				HAL_UART_Transmit(&huart2, (uint8_t*) data, 4, HAL_MAX_DELAY);
