@@ -62,7 +62,7 @@ void CAN1_Tx(void);
 void CAN1_Tx(void) {
 
 	// Define message.
-	uint8_t our_message[5] = { 'H', 'e', 'l', 'l', 'o' };
+	uint8_t hello[5] = { 'H', 'e', 'l', 'l', 'o' };
 
 	// Define mailbox.
 	uint32_t txMailbox;
@@ -74,20 +74,25 @@ void CAN1_Tx(void) {
 	txHeader.IDE = CAN_ID_STD; // Standard or External frame
 	txHeader.RTR = CAN_RTR_DATA; // Type of frame: Data or request/remote
 
-	// Send message.
 	// In this function, the mailbox will be updated.
-	// And it will request transmission heare.
-	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, our_message, &txMailbox)
+	// 1. Trigger transmission here.
+	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, (uint8_t*) hello, &txMailbox)
 			!= HAL_OK) {
+		char *error_msg = "Error while triggering transmit\r\n";
+		HAL_UART_Transmit(&huart2, (uint8_t*) error_msg, strlen(error_msg), HAL_MAX_DELAY);
 		Error_Handler();
 	}
 
-	// Polling till successful.
-	while (HAL_CAN_IsTxMessagePending(&hcan1, txMailbox)) {
-		char *msg = "Message transmitted\r\n";
-		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+	// 2. Pending state, mailbox is filled (wait til its scheduled).
+	// This message will be scheduled if priority is highest.
+	while (HAL_CAN_IsTxMessagePending(&hcan1, txMailbox));
 
-	}
+
+	// 3. Bus is idle here, compete in arbitration. If arbitration wins,
+	// transmit will succeed then the mailbox weill be empty again.
+	char *msg = "Message transmitted\r\n";
+	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
+
 }
 /* USER CODE END 0 */
 
@@ -127,7 +132,8 @@ int main(void) {
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	char *start_msg = "App started\r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*) start_msg, strlen(start_msg), HAL_MAX_DELAY);
+	HAL_UART_Transmit(&huart2, (uint8_t*) start_msg, strlen(start_msg),
+			HAL_MAX_DELAY);
 	while (1) {
 		/* USER CODE END WHILE */
 
@@ -192,7 +198,11 @@ void SystemClock_Config(void) {
 static void MX_CAN1_Init(void) {
 
 	/* USER CODE BEGIN CAN1_Init 0 */
-
+	// If there is no ACK, and AutoRetransmission is enabled,
+	// then the controller will retransmit the message.
+	// But this is not true in the loopback mode.
+	// ACK errors will be ignored in loopback mode.
+	// Question: If the mode is set to normal, not loopback, we cannot see the data in logic analyzer why?
 	/* USER CODE END CAN1_Init 0 */
 
 	/* USER CODE BEGIN CAN1_Init 1 */
@@ -200,7 +210,7 @@ static void MX_CAN1_Init(void) {
 	/* USER CODE END CAN1_Init 1 */
 	hcan1.Instance = CAN1;
 	hcan1.Init.Prescaler = 5;
-	hcan1.Init.Mode = CAN_MODE_NORMAL;
+	hcan1.Init.Mode = CAN_MODE_LOOPBACK;
 	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
 	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
 	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
