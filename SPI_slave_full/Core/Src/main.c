@@ -45,10 +45,11 @@ SPI_HandleTypeDef hspi2;
 /* USER CODE BEGIN PV */
 uint8_t cmd[4];
 uint8_t new_cmd_in = 0;
+uint16_t cmd_size_bytes = 1;
 
-uint8_t data[] = { 'O', 'K' };
-uint16_t data_size_bytes = 2;
+uint8_t data[] = { 'K' };
 uint8_t send_data = 0;
+uint16_t data_size_bytes = 1;
 
 /* USER CODE END PV */
 
@@ -99,7 +100,7 @@ int main(void) {
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	HAL_SPI_Receive_IT(&hspi2, cmd, 2);
+	HAL_SPI_Receive_IT(&hspi2, cmd, cmd_size_bytes);
 	while (1) {
 		/* USER CODE END WHILE */
 
@@ -115,7 +116,7 @@ int main(void) {
 
 			// 2. Repeat receive cmd.
 			// Master want to sync.
-			HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, 2);
+			HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, cmd_size_bytes);
 
 		}
 
