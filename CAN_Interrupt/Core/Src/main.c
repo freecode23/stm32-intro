@@ -119,7 +119,7 @@ void CAN1_Tx(void) {
 
 
 	// 3. Bus is idle here, compete in arbitration. If arbitration wins,
-	// transmit will succeed then the mailbox will be empty again.
+	// transmit will succeed then the mailbox weill be empty again.
 	char *msg = "Message transmitted\r\n";
 	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 
@@ -131,20 +131,20 @@ void CAN1_Rx(void)
 	CAN_RxHeaderTypeDef RxHeader;
 	uint8_t rcvd_msg[5];
 
-	// 1. We are waiting for at least one message in to the RX FIFO0.
+	// We are waiting for at least one message in to the RX FIFO0.
 	// If it return 0, then there is no message.
 	// We already set in config tthat we want FIFO number 0.
 	// So we are waiting until it returns non 0 value.
 	while(! HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0));
 
 
-	// 2. Get message from CAN Rx pin and store it in RxHeader.
+	// Get message from CAN Rx pin and store it in RxHeader.
 	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg) != HAL_OK)
 	{
 		Error_Handler();
 	}
 
-	// 3. Log the received message to UART.
+	// Log the received message to UART.
 	// Question: We will not see this in Logic Analyzer if we connect Rx GPIO Pin. Why?
 	char uart_msg[50];
 	sprintf(uart_msg,"Message Received : %s\r\n",rcvd_msg);
@@ -192,16 +192,20 @@ int main(void) {
 	// 1. Configure which message we want to receive.
 	CAN_Filter_Config();
 
+	// 2. Log
+	char *start_msg = "App started\r\n";
+	HAL_UART_Transmit(&huart2, (uint8_t*) start_msg, strlen(start_msg),
+			HAL_MAX_DELAY);
 	while (1) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		// 2. Start the CAN module.
+		// 3. Start the CAN module.
 		if (HAL_CAN_Start(&hcan1) != HAL_OK) {
 			Error_Handler();
 		}
 
-		// 3. Send and receive.
+		// 4. Send and receive.
 		CAN1_Tx();
 		CAN1_Rx();
 		/* USER CODE END 3 */
