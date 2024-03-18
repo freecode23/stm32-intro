@@ -123,14 +123,8 @@ int main(void) {
 
 			// Ready to receive next command.
 			HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, 1);
-
-
-
 			new_cmd_in = 0;
-
-
 		}
-
 	}
 	/* USER CODE END 3 */
 }

@@ -116,35 +116,63 @@ int main(void) {
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
-		// 1. Send SPI command.
+		// Option 1. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+		// 1. Send SPI command at every button press: WORKS.
+//		if (send_cmd == 1) {
+//			// Delay 10ms for debouncing.
+//			HAL_Delay(10);
+//
+//			// Check if the LED pin is 1.
+//			if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET) {
+//				// Send data once at a time.
+//				send_cmd = 0;
+//
+//				// Signalling the slave that we will sync the clock.
+//				HAL_SPI_Transmit(&hspi2, (uint8_t*) cmd, cmd_size_bytes,
+//				HAL_MAX_DELAY);
+//
+//				// 2. Ready to receive SPI response.
+//				HAL_SPI_Receive(&hspi2, (uint8_t*) data, data_size_bytes,
+//				HAL_MAX_DELAY);
+//
+//				// 3. Send UART sent confirmation.
+//				HAL_UART_Transmit(&huart2, (uint8_t*) data, data_size_bytes,
+//				HAL_MAX_DELAY);
+//
+//				// 4. Blink blue LED.
+//				HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
+//				HAL_Delay(1000);
+//				HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
+//				HAL_Delay(1000);
+//
+//			}
+//		}
+		// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<Option 1 ends
+
+		// Option 2. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+		// Only press button once. Then always send every 2 seconds.
 		if (send_cmd == 1) {
 			// Delay 10ms for debouncing.
 			HAL_Delay(10);
 
-			// Check if the LED pin is 1.
-			if (HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0) == GPIO_PIN_SET) {
-				// Send data once at a time.
-				send_cmd = 0;
+			// 1. Signalling the slave that we will sync the clock.
+			HAL_SPI_Transmit(&hspi2, (uint8_t*) cmd, cmd_size_bytes,
+			HAL_MAX_DELAY);
 
-				// Signalling the slave that we will sync the clock.
-				HAL_SPI_Transmit(&hspi2, (uint8_t*) cmd, cmd_size_bytes,
-				HAL_MAX_DELAY);
+			// 2. Ready to receive SPI response.
+			HAL_SPI_Receive(&hspi2, (uint8_t*) data, data_size_bytes,
+			HAL_MAX_DELAY);
 
-				// 2. Ready to receive SPI response.
-				HAL_SPI_Receive(&hspi2, (uint8_t*) data, data_size_bytes,
-				HAL_MAX_DELAY);
+			// 3. Send UART sent confirmation.
+			HAL_UART_Transmit(&huart2, (uint8_t*) data, data_size_bytes,
+			HAL_MAX_DELAY);
 
-				// 3. Send UART sent confirmation.
-				HAL_UART_Transmit(&huart2, (uint8_t*) data, data_size_bytes,
-				HAL_MAX_DELAY);
+			// 4. Blink blue LED.
+			HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
+			HAL_Delay(1000);
+			HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
+			HAL_Delay(1000);
 
-				// 4. Blink blue LED.
-				HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_SET);
-				HAL_Delay(1000);
-				HAL_GPIO_WritePin(LD6_GPIO_Port, LD6_Pin, GPIO_PIN_RESET);
-				HAL_Delay(1000);
-
-			}
 		}
 		/* USER CODE END 3 */
 	}
