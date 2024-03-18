@@ -108,12 +108,13 @@ int main(void) {
 		// 1. Receive command.
 		if (new_cmd_in == 1) {
 
+
+	        // Don't blink the LED here.
+
 	        // Reset back to A.
 	        if (data[0] > 'Z') {
 	            data[0] = 'A';
 	        }
-
-	        // Don't blink the LED here.
 
 			// Send data on receive command.
 			HAL_SPI_Transmit(&hspi2, (uint8_t *)&data, 1, 1);

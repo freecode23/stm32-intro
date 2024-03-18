@@ -75,13 +75,10 @@ static void MX_SPI2_Init(void);
 int main(void) {
 	/* USER CODE BEGIN 1 */
 	// 1. Master send command when blue button is pressed.
-	// 2. Slave on receive command, will turn on LED for 3 seconds.
-	// - Ready to receive next command.
-	// 3. Once it received a command, Slave will continuously send data to master
-	// because the `send_data` flag is set to 1.
-	// 4. Master will receive data and send directly to UART.
-	// Q: Debouncing?
-	// Q: USART affect consistency? sometimes after reset the yellow will just blink.
+	// 2. Slave on receive command, will transmit a single character.
+	// 3. Master will receive data and send directly to UART.
+	// 4. Slave will increment the data say from A to B, or B to C.
+	// 5. Slave will be set again to trigger interrupt if it receives a cmd from master.
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
