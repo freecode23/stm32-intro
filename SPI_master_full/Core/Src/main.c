@@ -117,7 +117,9 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		// Option 1. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-		// 1. Send SPI command at every button press: WORKS.
+		// This works it gives me "ABCDE" it will go on to "Z" if I press 26 times.
+		// I set the slave to increment data before it's sending.
+		// 1. Send SPI command at every button press.
 //		if (send_cmd == 1) {
 //			// Delay 10ms for debouncing.
 //			HAL_Delay(10);
@@ -148,9 +150,9 @@ int main(void) {
 //			}
 //		}
 		// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<Option 1 ends
-
 		// Option 2. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-		// Only press button once. Then always send every 2 seconds.
+		// This gives garbage value "AAA.AAAAAA"
+		// Only press button once. Then always send command every 2 seconds.
 		if (send_cmd == 1) {
 			// Delay 10ms for debouncing.
 			HAL_Delay(10);
