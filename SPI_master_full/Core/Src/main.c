@@ -47,6 +47,7 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 uint8_t cmd[] = { '1', '2' };
 uint8_t send_cmd = 0;
+uint8_t first_command = 1;
 uint16_t cmd_size_bytes = 1;
 
 uint8_t data[8];
@@ -147,12 +148,11 @@ int main(void) {
 //			}
 //		}
 		// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<Option 1 ends
+
 		// Option 2. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-		// This gives garbage value "AAA.AAAAAA"
-		// Only press button once. Then always send command every 2 seconds.
+		// Only press button once, send_cmd flag will be set to 1.
+		// Then always send command every 2 seconds.
 		if (send_cmd == 1) {
-			// Delay 10ms for debouncing.
-			HAL_Delay(10);
 
 			// 1. Signalling the slave that we will sync the clock.
 			HAL_SPI_Transmit(&hspi2, (uint8_t*) cmd, cmd_size_bytes,
