@@ -48,7 +48,7 @@ void TIMER6_Init(void) {
 	htimer6.Init.Prescaler = 249;
 
 	// The number of ticks (stored in ARR).
-	// We should subtract by 1 because the event is actually tirggered on
+	// We should subtract by 1 because the event is actually triggered on
 	// period + 1 tick. Which means at 64001 tick.
 	// Which gives the total period of 64001 tick. That's why we should subtract by 1
 	// from the number we compute.

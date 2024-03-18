@@ -47,7 +47,7 @@ uint8_t cmd[4];
 uint8_t new_cmd_in = 0;
 uint16_t cmd_size_bytes = 1;
 
-uint8_t data[] = { 'K' };
+uint8_t data[] = { 'A' };
 uint8_t send_data = 0;
 uint16_t data_size_bytes = 1;
 
@@ -107,16 +107,27 @@ int main(void) {
 		/* USER CODE BEGIN 3 */
 		// 1. Receive command.
 		if (new_cmd_in == 1) {
+
+	        // Reset back to A.
+	        if (data[0] > 'Z') {
+	            data[0] = 'A';
+	        }
+
+	        // Don't blink the LED here.
+
+			// Send data on receive command.
+			HAL_SPI_Transmit(&hspi2, (uint8_t *)&data, 1, 1);
+
+			// Increment the value of data[0]
+			data[0]++;
+
+			// Ready to receive next command.
+			HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, 1);
+
+
+
 			new_cmd_in = 0;
 
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
-			HAL_Delay(1000);
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
-			HAL_Delay(500);
-
-			// 2. Repeat receive cmd.
-			// Master want to sync.
-			HAL_SPI_Receive_IT(&hspi2, (uint8_t*) cmd, cmd_size_bytes);
 
 		}
 
@@ -250,12 +261,8 @@ static void MX_GPIO_Init(void) {
 /* USER CODE BEGIN 4 */
 void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi) {
 
+	// Do not transmit in the interrupt.
 	new_cmd_in = 1;
-
-	// Send data on receive command.
-	HAL_SPI_Transmit_IT(&hspi2, (uint8_t*) data, data_size_bytes);
-
-
 }
 /* USER CODE END 4 */
 

@@ -64,7 +64,7 @@ void TIMER6_Init(void)
 {
 	htimer6.Instance = TIM6;
 	htimer6.Init.Prescaler = 249;
-
+	// Source is 16Mhz
 	// The number of ticks (stored in ARR).
 	// We should subtract by 1 because the event is actually tirggered on
 	// period + 1 tick. Which means at 64001 tick.
