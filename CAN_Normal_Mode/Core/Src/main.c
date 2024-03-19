@@ -81,7 +81,12 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan);
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-
+	// 0. Pressing the user button will start timer 6.
+	// 1. Timer 6 will have a timer that trigger interrupt at every 1s.
+	// 2. In the timer interrupt, N1 (discovery board) will send a message which contains the LED number
+	// to N2 (nucleo board)
+	// 3. N1 also sends a remote frame to request 2 bytes of data for every 4s.
+	// 4. N2 upon receiving remote frame should send back 2 bytes of data using data frame.
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -107,10 +112,11 @@ int main(void) {
 	MX_USART2_UART_Init();
 	/* USER CODE BEGIN 2 */
 
-	// CAN
+	/**
+	 * CAN Module:
+	 */
 	CAN_Filter_Config();
-
-	// - Enable Interrupt.
+	// 1. Enable Interrupt.
 	// This will enable the interrupt bit in the following registers: TMEIE, FMPIE0, BOFIE.
 	if (HAL_CAN_ActivateNotification(&hcan1,
 	CAN_IT_TX_MAILBOX_EMPTY | CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_BUSOFF)
@@ -118,10 +124,11 @@ int main(void) {
 		Error_Handler();
 	};
 
-	// - Start the CAN module.
+	// 2. Start the CAN module.
 	if (HAL_CAN_Start(&hcan1) != HAL_OK) {
 		Error_Handler();
 	}
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -305,8 +312,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -429,7 +435,7 @@ static void MX_GPIO_Init(void) {
 void CAN_Filter_Config(void) {
 	/**
 	 * Filter which message we want to receive.
-	 * We will set to acce[t all.
+	 * We will set to accept all.
 	 * That's why the ID and Mask filter are all set to 0.
 	 * We will use IDMASK, which just means ID mode.
 	 */
@@ -451,24 +457,27 @@ void CAN_Filter_Config(void) {
 
 }
 
+uint8_t led_no = 0;
 void CAN1_Tx(void) {
-
-	// Define message.
-	uint8_t hello[5] = { 'H', 'e', 'l', 'l', 'o' };
 
 	// Define mailbox.
 	uint32_t txMailbox;
 
 	// Define header.
 	CAN_TxHeaderTypeDef txHeader;
-	txHeader.DLC = 5; // Data length count
+	txHeader.DLC = 1; // Data length count
 	txHeader.StdId = 0x65D; // Arbitrary number
 	txHeader.IDE = CAN_ID_STD; // Standard or External frame
 	txHeader.RTR = CAN_RTR_DATA; // Type of frame: Data or request/remote
 
+	uint8_t message = ++led_no;
+	if (led_no == 4) {
+		led_no = 0;
+	}
+
 	// In this function, the mailbox will be updated.
 	// 1. Trigger transmission here.
-	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, (uint8_t*) hello, &txMailbox)
+	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, &message, &txMailbox)
 			!= HAL_OK) {
 		char *error_msg = "Error while triggering transmit\r\n";
 		HAL_UART_Transmit(&huart2, (uint8_t*) error_msg, strlen(error_msg),
@@ -523,7 +532,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
 
 	// 3. Log the received message to UART.
 	char uart_msg[50];
-	sprintf(uart_msg, "Message Received : %s\r\n", rcvd_msg);
+	sprintf(uart_msg, "Message Received : %d\r\n", rcvd_msg[0]);
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg, strlen(uart_msg),
 	HAL_MAX_DELAY);
 

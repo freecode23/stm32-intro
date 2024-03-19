@@ -71,7 +71,7 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan);
 void CAN_Filter_Config(void) {
 	/**
 	 * Filter which message we want to receive.
-	 * We will set to acce[t all.
+	 * We will set to accept all.
 	 * That's why the ID and Mask filter are all set to 0.
 	 * We will use IDMASK, which just means ID mode.
 	 */
@@ -182,6 +182,7 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan) {
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
+	// 1. Hardware setup: Make sure to connext Rx to CAN.
 
 	/* USER CODE END 1 */
 
@@ -229,7 +230,7 @@ int main(void) {
 	// 4. Send once.
 	CAN1_Tx();
 
-	// 5. We ddon't need to call CAN1_Rx. Since callback will be called when message arrives
+	// 5. We don't need to call CAN1_Rx. Since callback will be called when message arrives
 	// in FIFO0.
 
 	while (1) {

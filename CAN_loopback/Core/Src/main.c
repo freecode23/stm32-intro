@@ -62,18 +62,18 @@ void CAN_Filter_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-void CAN_Filter_Config(void)
-{
+void CAN_Filter_Config(void) {
 	/**
 	 * Filter which message we want to receive.
 	 * We will set to acce[t all.
 	 * That's why the ID and Mask filter are all set to 0.
 	 * We will use IDMASK, which just means ID mode.
+	 * To check in logic analyzer set the bit rate to 500 kbps (500,000)
 	 */
 	CAN_FilterTypeDef can1_filter_init;
 
 	can1_filter_init.FilterActivation = ENABLE;
-	can1_filter_init.FilterBank  = 0;
+	can1_filter_init.FilterBank = 0;
 	can1_filter_init.FilterFIFOAssignment = CAN_RX_FIFO0;
 	can1_filter_init.FilterIdHigh = 0x0000;
 	can1_filter_init.FilterIdLow = 0x0000;
@@ -82,8 +82,7 @@ void CAN_Filter_Config(void)
 	can1_filter_init.FilterMode = CAN_FILTERMODE_IDMASK;
 	can1_filter_init.FilterScale = CAN_FILTERSCALE_32BIT;
 
-	if( HAL_CAN_ConfigFilter(&hcan1, &can1_filter_init) != HAL_OK)
-	{
+	if (HAL_CAN_ConfigFilter(&hcan1, &can1_filter_init) != HAL_OK) {
 		Error_Handler();
 	}
 
@@ -109,14 +108,15 @@ void CAN1_Tx(void) {
 	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, (uint8_t*) hello, &txMailbox)
 			!= HAL_OK) {
 		char *error_msg = "Error while triggering transmit\r\n";
-		HAL_UART_Transmit(&huart2, (uint8_t*) error_msg, strlen(error_msg), HAL_MAX_DELAY);
+		HAL_UART_Transmit(&huart2, (uint8_t*) error_msg, strlen(error_msg),
+				HAL_MAX_DELAY);
 		Error_Handler();
 	}
 
 	// 2. Pending state, mailbox is filled (wait til its scheduled).
 	// This message will be scheduled if priority is highest.
-	while (HAL_CAN_IsTxMessagePending(&hcan1, txMailbox));
-
+	while (HAL_CAN_IsTxMessagePending(&hcan1, txMailbox))
+		;
 
 	// 3. Bus is idle here, compete in arbitration. If arbitration wins,
 	// transmit will succeed then the mailbox will be empty again.
@@ -125,30 +125,29 @@ void CAN1_Tx(void) {
 
 }
 
-
-void CAN1_Rx(void)
-{
+void CAN1_Rx(void) {
 	CAN_RxHeaderTypeDef RxHeader;
 	uint8_t rcvd_msg[5];
 
 	// 1. We are waiting for at least one message in to the RX FIFO0.
 	// If it return 0, then there is no message.
-	// We already set in config tthat we want FIFO number 0.
+	// We already set in config that we want FIFO number 0.
 	// So we are waiting until it returns non 0 value.
-	while(! HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0));
-
+	while (!HAL_CAN_GetRxFifoFillLevel(&hcan1, CAN_RX_FIFO0))
+		;
 
 	// 2. Get message from CAN Rx pin and store it in RxHeader.
-	if(HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg) != HAL_OK)
-	{
+	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg)
+			!= HAL_OK) {
 		Error_Handler();
 	}
 
 	// 3. Log the received message to UART.
 	// Question: We will not see this in Logic Analyzer if we connect Rx GPIO Pin. Why?
 	char uart_msg[50];
-	sprintf(uart_msg,"Message Received : %s\r\n",rcvd_msg);
-	HAL_UART_Transmit(&huart2,(uint8_t*)uart_msg,strlen(uart_msg),HAL_MAX_DELAY);
+	sprintf(uart_msg, "Message Received : %s\r\n", rcvd_msg);
+	HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg, strlen(uart_msg),
+			HAL_MAX_DELAY);
 
 }
 /* USER CODE END 0 */
@@ -197,11 +196,16 @@ int main(void) {
 
 		/* USER CODE BEGIN 3 */
 		// 2. Start the CAN module.
+		char *msg = "Start the CAN module\r\n";
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 		if (HAL_CAN_Start(&hcan1) != HAL_OK) {
 			Error_Handler();
 		}
+		msg = "Finish starting CAN module\r\n";
+		HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
 
 		// 3. Send and receive.
+		// Because its in loopback, Rx will just receive the same message.
 		CAN1_Tx();
 		CAN1_Rx();
 		/* USER CODE END 3 */
