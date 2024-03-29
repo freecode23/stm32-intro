@@ -85,16 +85,15 @@ CAN_RxHeaderTypeDef RxHeader;
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-	// 0. Pressing the user button will start timer 6.
-	// 1. Timer 6 will have a timer that trigger interrupt at every 1s.
-	// 2. In the timer interrupt, N1 (nucleo board) will send a message which contains the LED number
-	// to N2 (discovery board)
-	// 3. N1 also sends a remote frame to request 2 bytes of data for every 4s.
-	// 4. N2 upon receiving remote frame should send back 2 bytes of data using data frame.
-	// TODO: Make sure to change mode to Normal when connecting all CAN.
-	// Redo the program for Nucleo board.
-	// Check why we need the 4 LED GPIO output, and the interrupt like in lecture.
-	// Re watch from lesson 145 to see if both node receives expected message.
+	// 0. On Nucleo or Discovery board, pressing the user button will start timer 6.
+	// (For the actual application, we will only press user button on Nucleo board).
+	// 1. Timer 6 will trigger interrupt at every 1s.
+	// 2. In this interrupt, Nucleo will send a message which contains the LED number
+	// to Discovery.
+	// 3. Upon receiving a message, Discovery will turn LED on based on the number.
+	// E.g. number 1 for Orange, 2 for Green, etc.
+	// 4. Nucleo also sends a remote frame to request 2 bytes of data for every 4 seconds.
+	// 5. Disc upon receiving this remote frame, should send back 2 bytes of data using data frame.
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -148,16 +147,8 @@ int main(void) {
 		if (rx_complete_flag == 1) {
 			rx_complete_flag = 0;
 			if (RxHeader.StdId == 0x65D && RxHeader.RTR == 0) {
-
 				// Turn LED based on the message received:
 				LED_Manage_Output(rcvd_msg[0]);
-
-
-//				char uart_msg[50];
-//				sprintf(uart_msg, "Message Received : %d\r\n", rcvd_msg[0]);
-//				HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg,
-//						strlen(uart_msg),
-//						HAL_MAX_DELAY);
 			}
 		}
 		/* USER CODE END WHILE */
@@ -225,7 +216,7 @@ static void MX_CAN1_Init(void) {
 	/* USER CODE END CAN1_Init 1 */
 	hcan1.Instance = CAN1;
 	hcan1.Init.Prescaler = 5;
-	hcan1.Init.Mode = CAN_MODE_LOOPBACK;
+	hcan1.Init.Mode = CAN_MODE_NORMAL;
 	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
 	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
 	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
@@ -338,7 +329,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
