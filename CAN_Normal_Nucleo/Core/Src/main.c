@@ -54,13 +54,12 @@ UART_HandleTypeDef huart2;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_CAN1_Init(void);
 static void MX_TIM6_Init(void);
+static void MX_CAN1_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void CAN1_Tx(void);
 void CAN_Filter_Config(void);
-void LED_Manage_Output(uint8_t led_no);
 
 // Transmit Callback when transmit message is completed.
 void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan);
@@ -85,16 +84,7 @@ CAN_RxHeaderTypeDef RxHeader;
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-	// 0. Pressing the user button will start timer 6.
-	// 1. Timer 6 will have a timer that trigger interrupt at every 1s.
-	// 2. In the timer interrupt, N1 (nucleo board) will send a message which contains the LED number
-	// to N2 (discovery board)
-	// 3. N1 also sends a remote frame to request 2 bytes of data for every 4s.
-	// 4. N2 upon receiving remote frame should send back 2 bytes of data using data frame.
-	// TODO: Make sure to change mode to Normal when connecting all CAN.
-	// Redo the program for Nucleo board.
-	// Check why we need the 4 LED GPIO output, and the interrupt like in lecture.
-	// Re watch from lesson 145 to see if both node receives expected message.
+
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -115,8 +105,8 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
-	MX_CAN1_Init();
 	MX_TIM6_Init();
+	MX_CAN1_Init();
 	MX_USART2_UART_Init();
 	/* USER CODE BEGIN 2 */
 
@@ -136,28 +126,24 @@ int main(void) {
 	if (HAL_CAN_Start(&hcan1) != HAL_OK) {
 		Error_Handler();
 	}
-
-	char *uart_msg = "Discovery board starts\r\n";
+	char *uart_msg = "Nucleo board starts\r\n";
 	HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg, strlen(uart_msg),
 	HAL_MAX_DELAY);
+
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
+
 		if (rx_complete_flag == 1) {
 			rx_complete_flag = 0;
 			if (RxHeader.StdId == 0x65D && RxHeader.RTR == 0) {
-
-				// Turn LED based on the message received:
-				LED_Manage_Output(rcvd_msg[0]);
-
-
-//				char uart_msg[50];
-//				sprintf(uart_msg, "Message Received : %d\r\n", rcvd_msg[0]);
-//				HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg,
-//						strlen(uart_msg),
-//						HAL_MAX_DELAY);
+				char uart_msg[50];
+				sprintf(uart_msg, "Message Received : %d\r\n", rcvd_msg[0]);
+				HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg,
+						strlen(uart_msg),
+						HAL_MAX_DELAY);
 			}
 		}
 		/* USER CODE END WHILE */
@@ -178,19 +164,21 @@ void SystemClock_Config(void) {
 	/** Configure the main internal regulator output voltage
 	 */
 	__HAL_RCC_PWR_CLK_ENABLE();
-	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+	__HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
 	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLM = 4;
-	RCC_OscInitStruct.PLL.PLLN = 50;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-	RCC_OscInitStruct.PLL.PLLQ = 7;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLM = 16;
+	RCC_OscInitStruct.PLL.PLLN = 200;
+	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV4;
+	RCC_OscInitStruct.PLL.PLLQ = 2;
+	RCC_OscInitStruct.PLL.PLLR = 2;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
 	}
@@ -322,141 +310,55 @@ static void MX_GPIO_Init(void) {
 	/* USER CODE END MX_GPIO_Init_1 */
 
 	/* GPIO Ports Clock Enable */
-	__HAL_RCC_GPIOE_CLK_ENABLE();
 	__HAL_RCC_GPIOC_CLK_ENABLE();
 	__HAL_RCC_GPIOH_CLK_ENABLE();
 	__HAL_RCC_GPIOA_CLK_ENABLE();
 	__HAL_RCC_GPIOB_CLK_ENABLE();
-	__HAL_RCC_GPIOD_CLK_ENABLE();
 
 	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(CS_I2C_SPI_GPIO_Port, CS_I2C_SPI_Pin, GPIO_PIN_RESET);
-
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(OTG_FS_PowerSwitchOn_GPIO_Port, OTG_FS_PowerSwitchOn_Pin,
-			GPIO_PIN_SET);
-
-	/*Configure GPIO pin Output Level */
-	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
-
-	/*Configure GPIO pin : CS_I2C_SPI_Pin */
-	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(CS_I2C_SPI_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : OTG_FS_PowerSwitchOn_Pin */
-	GPIO_InitStruct.Pin = OTG_FS_PowerSwitchOn_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(OTG_FS_PowerSwitchOn_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : PDM_OUT_Pin */
-	GPIO_InitStruct.Pin = PDM_OUT_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-	HAL_GPIO_Init(PDM_OUT_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : B1_Pin */
 	GPIO_InitStruct.Pin = B1_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+	GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(B1_GPIO_Port, &GPIO_InitStruct);
 
-	/*Configure GPIO pin : I2S3_WS_Pin */
-	GPIO_InitStruct.Pin = I2S3_WS_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
-	HAL_GPIO_Init(I2S3_WS_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : SPI1_SCK_Pin SPI1_MISO_Pin SPI1_MOSI_Pin */
-	GPIO_InitStruct.Pin = SPI1_SCK_Pin | SPI1_MISO_Pin | SPI1_MOSI_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF5_SPI1;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : BOOT1_Pin */
-	GPIO_InitStruct.Pin = BOOT1_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(BOOT1_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : CLK_IN_Pin */
-	GPIO_InitStruct.Pin = CLK_IN_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF5_SPI2;
-	HAL_GPIO_Init(CLK_IN_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : LD4_Pin LD3_Pin LD5_Pin LD6_Pin
-	 Audio_RST_Pin */
-	GPIO_InitStruct.Pin = LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin;
+	/*Configure GPIO pin : LD2_Pin */
+	GPIO_InitStruct.Pin = LD2_Pin;
 	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : I2S3_MCK_Pin I2S3_SCK_Pin I2S3_SD_Pin */
-	GPIO_InitStruct.Pin = I2S3_MCK_Pin | I2S3_SCK_Pin | I2S3_SD_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF6_SPI3;
-	HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : VBUS_FS_Pin */
-	GPIO_InitStruct.Pin = VBUS_FS_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(VBUS_FS_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : OTG_FS_ID_Pin OTG_FS_DM_Pin OTG_FS_DP_Pin */
-	GPIO_InitStruct.Pin = OTG_FS_ID_Pin | OTG_FS_DM_Pin | OTG_FS_DP_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF10_OTG_FS;
-	HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : OTG_FS_OverCurrent_Pin */
-	GPIO_InitStruct.Pin = OTG_FS_OverCurrent_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(OTG_FS_OverCurrent_GPIO_Port, &GPIO_InitStruct);
-
-	/*Configure GPIO pins : Audio_SCL_Pin Audio_SDA_Pin */
-	GPIO_InitStruct.Pin = Audio_SCL_Pin | Audio_SDA_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_AF_OD;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-	GPIO_InitStruct.Alternate = GPIO_AF4_I2C1;
-	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-	/*Configure GPIO pin : MEMS_INT2_Pin */
-	GPIO_InitStruct.Pin = MEMS_INT2_Pin;
-	GPIO_InitStruct.Mode = GPIO_MODE_EVT_RISING;
-	GPIO_InitStruct.Pull = GPIO_NOPULL;
-	HAL_GPIO_Init(MEMS_INT2_GPIO_Port, &GPIO_InitStruct);
+	HAL_GPIO_Init(LD2_GPIO_Port, &GPIO_InitStruct);
 
 	/* EXTI interrupt init*/
-	HAL_NVIC_SetPriority(EXTI0_IRQn, 0, 0);
-	HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+	HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 	/* USER CODE BEGIN MX_GPIO_Init_2 */
 	/* USER CODE END MX_GPIO_Init_2 */
 }
 
 /* USER CODE BEGIN 4 */
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+	if (htim == &htim6) {
+		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+
+		// - Send once.
+		CAN1_Tx();
+	}
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+
+	if (GPIO_Pin == B1_Pin) // Check if the interrupt comes from the button pin
+	{
+		// If button is pressed, timer 6 will start which means
+		// We will start Tx message from Discovery board.
+		HAL_TIM_Base_Start_IT(&htim6);
+	}
+}
+
 void CAN_Filter_Config(void) {
 	/**
 	 * Filter which message we want to receive.
@@ -496,7 +398,7 @@ void CAN1_Tx(void) {
 	txHeader.RTR = CAN_RTR_DATA; // Type of frame: Data or request/remote
 
 	uint8_t message = ++led_no;
-	if (led_no == 3) {
+	if (led_no == 4) {
 		led_no = 0;
 	}
 
@@ -544,74 +446,17 @@ void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
  * when message received in Fifo0.
  */
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-	// We don't need to wait for message, we know we just received them.
-
-	// Case1: Receive a command message from nucleo in CAN Rx pin.
+	// 1. We don't need to wait for message, we know we just received them.
+	// 2. Get message from Discovery board.
 	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg)
 			== HAL_OK) {
 		rx_complete_flag = 1;
-
-		// Case2: Receive a remote frame.
-	} else if (RxHeader.StdId == 0x651 && RxHeader.RTR == 1) {
-		// Send message to Nucleo.
-//		Send_response(RxHeader.StdId);
-		return;
-
 	} else {
 		Error_Handler();
 	}
 
 }
 
-/**
- * Timer Callback:
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim6) {
-		HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
-
-		// - Send once.
-		CAN1_Tx();
-	}
-}
-
-/**
- * External interrupt Callback:
- * Button.
- */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-
-	if (GPIO_Pin == GPIO_PIN_0) // Check if the interrupt comes from the button pin
-	{
-		// If button is pressed, timer 6 will start which means
-		// We will start Tx message from Discovery board.
-		HAL_TIM_Base_Start_IT(&htim6);
-	}
-}
-
-void LED_Manage_Output(uint8_t led_no) {
-	switch (led_no) {
-	case 1:
-		// LD3 Orange on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-
-		break;
-	case 2:
-		// LD4 Green on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-		break;
-	case 3:
-		// LD5 Red on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_SET);
-		break;
-	}
-}
 /* USER CODE END 4 */
 
 /**
