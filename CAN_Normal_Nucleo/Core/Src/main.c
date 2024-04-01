@@ -48,6 +48,11 @@ TIM_HandleTypeDef htim6;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+volatile uint8_t rx_complete_flag = 0;
+
+uint8_t rcvd_msg[5];
+
+CAN_RxHeaderTypeDef RxHeader;
 
 /* USER CODE END PV */
 
@@ -72,9 +77,6 @@ void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-volatile uint8_t rx_complete_flag = 0;
-uint8_t rcvd_msg[5];
-CAN_RxHeaderTypeDef RxHeader;
 
 /* USER CODE END 0 */
 

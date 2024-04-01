@@ -41,42 +41,137 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-CAN_HandleTypeDef hcan1;
-
-TIM_HandleTypeDef htim6;
-
 UART_HandleTypeDef huart2;
+UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+volatile uint8_t send_sms = 0;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_CAN1_Init(void);
-static void MX_TIM6_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN PFP */
-void CAN1_Tx(void);
-void CAN_Filter_Config(void);
-void LED_Manage_Output(uint8_t led_no);
-void Send_Response(uint32_t StdId);
-
-// Transmit Callback when transmit message is completed.
-void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan);
-void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan);
-void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan);
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
-void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan);
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-volatile uint8_t rx_complete_flag = 0;
-uint8_t rcvd_msg[5];
-CAN_RxHeaderTypeDef RxHeader;
+const char apn[] = "vzwinternet";
+
+// Use tcp for non secure conenction.
+const char host[] = "tcp://86e793eba99948c8822845a7124e3aec.s1.eu.hivemq.cloud";
+const int port = 1883;
+const char username[] = "";
+const char password[] = "";
+const char topic_cmd[] = "topic/cmd";
+const char topic_sensor[] = "topic/sensor";
+const uint32_t timeOut = 10000;
+uint8_t rxBuffer[160] = {};
+// Buffer to store the response
+uint8_t ATisOK = 0;
+uint8_t CGREGisOK = 0;
+uint32_t previousTick;
+uint16_t readValue;
+char charData[15];
+
+
+void SIMTransmit(char *cmd) {
+
+	// Clear the receive buffer
+	memset(rxBuffer, 0, sizeof(rxBuffer));
+
+	// Send the AT command to SIM7600
+	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), HAL_MAX_DELAY);
+	HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), 5000);
+
+	char status_msg[200];
+	sprintf(status_msg, "-->Command and res:\n%s\r\n", rxBuffer);
+	HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
+	HAL_MAX_DELAY);
+
+
+}
+
+void mqttPublish(void) {
+	ATisOK = 0;
+	CGREGisOK = 0;
+	char ATcommand[80];
+
+	// 1. Check for OK response for AT
+	previousTick = HAL_GetTick();
+	while (!ATisOK && previousTick + timeOut > HAL_GetTick()) {
+		SIMTransmit("AT\r\n");
+		if (strstr((char*) rxBuffer, "OK"))
+				{
+			ATisOK = 1;
+		}
+
+		HAL_Delay(1000);
+
+	}
+
+	// 2. Ensure GPRS network is available
+	if (ATisOK) {
+		previousTick = HAL_GetTick();
+		while (!CGREGisOK && previousTick + timeOut > HAL_GetTick()) {
+			SIMTransmit("AT+CSQ\r\n");
+			SIMTransmit("AT+CREG?\r\n");
+			SIMTransmit("AT+CGREG?\r\n");
+			if (strstr((char*) rxBuffer, "+CGREG: 0,1"))
+					{
+				CGREGisOK = 1;
+			}
+		}
+	}
+
+	// If registered
+	if (CGREGisOK) {
+		// 1.Ensure GPRS network is available.
+		sprintf(ATcommand, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r\n", apn); // Specify the value of  PDP context
+		SIMTransmit(ATcommand);
+		SIMTransmit("AT+CGPADDR\r\n");
+
+		// 2. Start MQTT service, activate PDP context
+		SIMTransmit("AT+CMQTTSTART\r\n");
+
+		// 3. Acquire a client.
+		SIMTransmit("AT+CMQTTACCQ=0,\"client01\"\r\n");
+
+		// 4. Connect to MQTT server
+		sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
+		SIMTransmit(ATcommand);
+
+		// 5. Set the topic for publish message "topic/cmd"
+		sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_cmd));
+		SIMTransmit(ATcommand);
+
+//		sprintf(ATcommand,"%s\r\n",topic_cmd);
+//		SIMTransmit(ATcommand);
+
+		// TODO: topic length received is 0,11 ERROR eventhough we haven't actually send the topic.
+		// Sending the topic string without adding \r\n to its length
+//
+//		// 6. Set the payload
+//		sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n",
+//				strlen("Hello from sim7600"));
+//		SIMTransmit(ATcommand);
+//		SIMTransmit("Hello from sim7600");
+//
+//		// 7. Publish.
+//		SIMTransmit("AT+CMQTTPUB=0,1,60\r\n");
+//
+//		// 8. Disconnect
+//		SIMTransmit("AT+CMQTTDISC=0,120\r\n"); // Disconnect from Server
+//		SIMTransmit("AT+CMQTTREL=0\r\n"); // Release the Client
+//		SIMTransmit("AT+CMQTTSTOP\r\n"); // Stop MQTT Service
+
+
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -86,16 +181,7 @@ CAN_RxHeaderTypeDef RxHeader;
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-	// This code is to be uploaded to Discovery board.
-	// 0. On Nucleo or Discovery board, pressing the user button will start timer 6.
-	// (For the actual application, we will only press user button on Nucleo board).
-	// 1. Timer 6 will trigger interrupt at every 1s.
-	// 2. In this interrupt, Nucleo will send a message which contains the LED number
-	// to Discovery.
-	// 3. Upon receiving a message, Discovery will turn LED on based on the number.
-	// E.g. number 1 for Orange, 2 for Green, etc.
-	// 4. Nucleo also sends a remote frame to request 2 bytes of data for every 4 seconds.
-	// 5. Disc upon receiving this remote frame, should send back 2 bytes of data using data frame.
+
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -116,43 +202,21 @@ int main(void) {
 
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
-	MX_CAN1_Init();
-	MX_TIM6_Init();
 	MX_USART2_UART_Init();
+	MX_USART3_UART_Init();
 	/* USER CODE BEGIN 2 */
 
-	/**
-	 * CAN Module:
-	 */
-	CAN_Filter_Config();
-	// 1. Enable Interrupt.
-	// This will enable the interrupt bit in the following registers: TMEIE, FMPIE0, BOFIE.
-	if (HAL_CAN_ActivateNotification(&hcan1,
-	CAN_IT_TX_MAILBOX_EMPTY | CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_BUSOFF)
-			!= HAL_OK) {
-		Error_Handler();
-	};
-
-	// 2. Start the CAN module.
-	if (HAL_CAN_Start(&hcan1) != HAL_OK) {
-		Error_Handler();
-	}
-
-	char *uart_msg = "Discovery board starts\r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*) uart_msg, strlen(uart_msg),
-	HAL_MAX_DELAY);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
+	HAL_UART_Transmit(&huart3, (uint8_t*) "App started.\r\n",
+			strlen("App started.\r\n"),
+			HAL_MAX_DELAY);
+
+	mqttPublish();
 	while (1) {
-		if (rx_complete_flag == 1) {
-			rx_complete_flag = 0;
-			if (RxHeader.StdId == 0x65D && RxHeader.RTR == 0) {
-				// Turn LED based on the message received:
-				LED_Manage_Output(rcvd_msg[0]);
-			}
-		}
+
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
@@ -176,14 +240,10 @@ void SystemClock_Config(void) {
 	/** Initializes the RCC Oscillators according to the specified parameters
 	 * in the RCC_OscInitTypeDef structure.
 	 */
-	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
-	RCC_OscInitStruct.HSEState = RCC_HSE_ON;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
-	RCC_OscInitStruct.PLL.PLLM = 4;
-	RCC_OscInitStruct.PLL.PLLN = 50;
-	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
-	RCC_OscInitStruct.PLL.PLLQ = 7;
+	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK) {
 		Error_Handler();
 	}
@@ -192,85 +252,14 @@ void SystemClock_Config(void) {
 	 */
 	RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK | RCC_CLOCKTYPE_SYSCLK
 			| RCC_CLOCKTYPE_PCLK1 | RCC_CLOCKTYPE_PCLK2;
-	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+	RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+	RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV2;
 	RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
-	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
+	RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
-	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK) {
+	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
 		Error_Handler();
 	}
-}
-
-/**
- * @brief CAN1 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_CAN1_Init(void) {
-
-	/* USER CODE BEGIN CAN1_Init 0 */
-
-	/* USER CODE END CAN1_Init 0 */
-
-	/* USER CODE BEGIN CAN1_Init 1 */
-
-	/* USER CODE END CAN1_Init 1 */
-	hcan1.Instance = CAN1;
-	hcan1.Init.Prescaler = 5;
-	hcan1.Init.Mode = CAN_MODE_NORMAL;
-	hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
-	hcan1.Init.TimeSeg1 = CAN_BS1_8TQ;
-	hcan1.Init.TimeSeg2 = CAN_BS2_1TQ;
-	hcan1.Init.TimeTriggeredMode = DISABLE;
-	hcan1.Init.AutoBusOff = DISABLE;
-	hcan1.Init.AutoWakeUp = DISABLE;
-	hcan1.Init.AutoRetransmission = DISABLE;
-	hcan1.Init.ReceiveFifoLocked = DISABLE;
-	hcan1.Init.TransmitFifoPriority = DISABLE;
-	if (HAL_CAN_Init(&hcan1) != HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN CAN1_Init 2 */
-
-	/* USER CODE END CAN1_Init 2 */
-
-}
-
-/**
- * @brief TIM6 Initialization Function
- * @param None
- * @retval None
- */
-static void MX_TIM6_Init(void) {
-
-	/* USER CODE BEGIN TIM6_Init 0 */
-
-	/* USER CODE END TIM6_Init 0 */
-
-	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
-
-	/* USER CODE BEGIN TIM6_Init 1 */
-
-	/* USER CODE END TIM6_Init 1 */
-	htim6.Instance = TIM6;
-	htim6.Init.Prescaler = 799;
-	htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim6.Init.Period = 62499;
-	htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-	if (HAL_TIM_Base_Init(&htim6) != HAL_OK) {
-		Error_Handler();
-	}
-	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
-	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
-	if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig)
-			!= HAL_OK) {
-		Error_Handler();
-	}
-	/* USER CODE BEGIN TIM6_Init 2 */
-
-	/* USER CODE END TIM6_Init 2 */
-
 }
 
 /**
@@ -301,6 +290,37 @@ static void MX_USART2_UART_Init(void) {
 	/* USER CODE BEGIN USART2_Init 2 */
 
 	/* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+ * @brief USART3 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_USART3_UART_Init(void) {
+
+	/* USER CODE BEGIN USART3_Init 0 */
+
+	/* USER CODE END USART3_Init 0 */
+
+	/* USER CODE BEGIN USART3_Init 1 */
+
+	/* USER CODE END USART3_Init 1 */
+	huart3.Instance = USART3;
+	huart3.Init.BaudRate = 115200;
+	huart3.Init.WordLength = UART_WORDLENGTH_8B;
+	huart3.Init.StopBits = UART_STOPBITS_1;
+	huart3.Init.Parity = UART_PARITY_NONE;
+	huart3.Init.Mode = UART_MODE_TX_RX;
+	huart3.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+	huart3.Init.OverSampling = UART_OVERSAMPLING_16;
+	if (HAL_UART_Init(&huart3) != HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN USART3_Init 2 */
+
+	/* USER CODE END USART3_Init 2 */
 
 }
 
@@ -450,179 +470,16 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-void CAN_Filter_Config(void) {
-	/**
-	 * Filter which message we want to receive.
-	 * We will set to accept all.
-	 * That's why the ID and Mask filter are all set to 0.
-	 * We will use IDMASK, which just means ID mode.
-	 */
-	CAN_FilterTypeDef can1_filter_init;
-
-	can1_filter_init.FilterActivation = ENABLE;
-	can1_filter_init.FilterBank = 0;
-	can1_filter_init.FilterFIFOAssignment = CAN_RX_FIFO0;
-	can1_filter_init.FilterIdHigh = 0x0000;
-	can1_filter_init.FilterIdLow = 0x0000;
-	can1_filter_init.FilterMaskIdHigh = 0x0000;
-	can1_filter_init.FilterMaskIdLow = 0x0000;
-	can1_filter_init.FilterMode = CAN_FILTERMODE_IDMASK;
-	can1_filter_init.FilterScale = CAN_FILTERSCALE_32BIT;
-
-	if (HAL_CAN_ConfigFilter(&hcan1, &can1_filter_init) != HAL_OK) {
-		Error_Handler();
-	}
-
-}
-
-uint8_t led_no = 0;
-void CAN1_Tx(void) {
-
-	// Define mailbox.
-	uint32_t txMailbox;
-
-	// Define header.
-	CAN_TxHeaderTypeDef txHeader;
-	txHeader.DLC = 1; // Data length count
-	txHeader.StdId = 0x65D; // Arbitrary number
-	txHeader.IDE = CAN_ID_STD; // Standard or External frame
-	txHeader.RTR = CAN_RTR_DATA; // Type of frame: Data or request/remote
-
-	uint8_t message = ++led_no;
-	if (led_no == 3) {
-		led_no = 0;
-	}
-
-	// In this function, the mailbox will be updated.
-	// 1. Trigger transmission here.
-	if (HAL_CAN_AddTxMessage(&hcan1, &txHeader, &message, &txMailbox)
-			!= HAL_OK) {
-		char *error_msg = "Error while triggering transmit\r\n";
-		HAL_UART_Transmit(&huart2, (uint8_t*) error_msg, strlen(error_msg),
-		HAL_MAX_DELAY);
-		Error_Handler();
-	}
-
-	// 2. We don't need to check if Message is not pending anymore.
-	// Since we are just using interrupt.
-}
-
-/**
- * Tx Callback:
- * We don't know which mailbox will trigger the callback.
- * So we implement callback from all inbox.
- */
-void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *hcan) {
-	// 3. Bus is idle here, compete in arbitration. If arbitration wins,
-	// transmit will succeed then the mailbox weill be empty again.
-	char *msg = "Message transmitted Mailbox0\r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-}
-
-void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *hcan) {
-
-	char *msg = "Message transmitted Mailbox1 \r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-
-}
-
-void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *hcan) {
-	char *msg = "Message transmitted from Mailbox2 \r\n";
-	HAL_UART_Transmit(&huart2, (uint8_t*) msg, strlen(msg), HAL_MAX_DELAY);
-
-}
-
-/**
- * Rx Callback:
- * when message received in Fifo0.
- */
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
-	// We don't need to wait for message, we know we just received them.
-
-	// Case1: Receive a command message from nucleo in CAN Rx pin.
-	if (HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &RxHeader, rcvd_msg)
-			== HAL_OK) {
-		rx_complete_flag = 1;
-
-		// Case2: Receive a remote frame.
-	} else if (RxHeader.StdId == 0x651 && RxHeader.RTR == 1) {
-		// Send message to Nucleo.
-		Send_Response(RxHeader.StdId);
-		return;
-
-	} else {
-		Error_Handler();
-	}
-
-}
-
-/**
- * Timer Callback:
- */
-void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-	if (htim == &htim6) {
-		HAL_GPIO_TogglePin(LD6_GPIO_Port, LD6_Pin);
-
-		// - Send once.
-		CAN1_Tx();
-	}
-}
-
-/**
- * External interrupt Callback:
- * Button.
- */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
-	if (GPIO_Pin == GPIO_PIN_0) // Check if the interrupt comes from the button pin
+	if (GPIO_Pin == B1_Pin) // Check if the interrupt comes from the button pin
 	{
-		// If button is pressed, timer 6 will start which means
-		// We will start Tx message from Discovery board.
-		HAL_TIM_Base_Start_IT(&htim6);
+		// If button is pressed, set the send SMS to SIM7600 to true.
+		send_sms = 1;
+
 	}
 }
 
-void LED_Manage_Output(uint8_t led_no) {
-	switch (led_no) {
-	case 1:
-		// LD3 Orange on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-
-		break;
-	case 2:
-		// LD4 Green on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_SET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_RESET);
-		break;
-	case 3:
-		// LD5 Red on
-		HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD4_GPIO_Port, LD4_Pin, GPIO_PIN_RESET);
-		HAL_GPIO_WritePin(LD5_GPIO_Port, LD5_Pin, GPIO_PIN_SET);
-		break;
-	}
-}
-
-void Send_Response(uint32_t StdId) {
-
-	CAN_TxHeaderTypeDef TxHeader;
-	uint32_t TxMailbox;
-	uint8_t response[2] = { 0xAB, 0XCD };
-
-	TxHeader.DLC = 2;
-	TxHeader.StdId = StdId;
-	TxHeader.IDE = CAN_ID_STD;
-	TxHeader.RTR = CAN_RTR_DATA;
-
-	if (HAL_CAN_AddTxMessage(&hcan1, &TxHeader, response, &TxMailbox)
-			!= HAL_OK) {
-		Error_handler();
-	}
-
-}
 /* USER CODE END 4 */
 
 /**
