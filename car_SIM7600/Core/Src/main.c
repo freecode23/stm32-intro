@@ -106,7 +106,7 @@ uint8_t SIMTransmitWithPrompt(const char *cmd, const char *additionalData) {
 
 	// Loop until prompt is received or timeout occurs
 	while (strstr((char*) rxBuffer, ">") == NULL) {
-		HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), 3000);
+		HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), HAL_MAX_DELAY);
 
 		// Check timeout
 		if ((HAL_GetTick() - startTime) > 5000) {
@@ -215,7 +215,6 @@ void mqttPublish(void) {
 		// Option 2: Use while loop and wait for the ">" sign before sending the topic name.
 		// This also doesn't work. It always hits timeout.
 		sprintf(ATcommand,"AT+CMQTTTOPIC=0,%d",strlen(topic_cmd));
-		SIMTransmit(ATcommand);
 		sprintf(additionalData,"%s\r\n",topic_cmd);
 		SIMTransmitWithPrompt(ATcommand, additionalData);
 
