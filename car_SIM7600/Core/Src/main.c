@@ -46,6 +46,7 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 volatile uint8_t send_sms = 0;
+char ATcommand[256];
 
 /* USER CODE END PV */
 
@@ -63,193 +64,115 @@ static void MX_USART3_UART_Init(void);
 const char apn[] = "vzwinternet";
 
 // Use tcp for non secure conenction.
-const char host[] = "tcp://86e793eba99948c8822845a7124e3aec.s1.eu.hivemq.cloud";
-const int port = 1883;
-const char username[] = "";
-const char password[] = "";
+const char host[] = "tcp://apv3187879vov-ats.iot.us-east-2.amazonaws.com";
+const int port = 8883;
 const char topic_cmd[] = "topic/cmd";
+const char topic_will[] = "topic/will";
+char *will_message = "SIMCom Connected!";
 const char topic_sensor[] = "topic/sensor";
 const uint32_t timeOut = 10000;
-uint8_t rxBuffer[160] = { };
-// Buffer to store the response
-uint8_t ATisOK = 0;
-uint8_t CGREGisOK = 0;
+uint8_t rxBuffer[2000] = { };
+uint8_t resIsOK = 0;
 uint32_t previousTick;
 uint16_t readValue;
-char charData[15];
 
 /**
  * Send an AT command to SIM module, and log the command and response to UART.
  */
-void SIMTransmit(char *cmd) {
+void SIMTransmit(const char *cmd) {
 
-	// Clear the response buffer.
 	memset(rxBuffer, 0, sizeof(rxBuffer));
 
-	// Send the AT command to SIM7600.
-	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), HAL_MAX_DELAY);
-	HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), 5000);
+	// Send the AT command to SIM7600
+	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), 2000);
+	HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, 400, 2000);
 
 	// Log the response received by the SIM module.
-	char status_msg[200];
+	char status_msg[3000];
 	sprintf(status_msg, "-->Command and res:\n%s\r\n", rxBuffer);
 	HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
 	HAL_MAX_DELAY);
-
-}
-
-uint8_t SIMTransmitWithPrompt(const char *cmd, const char *additionalData) {
-	// Clear the receive buffer
-	memset(rxBuffer, 0, sizeof(rxBuffer));
-
-	// Send the AT command.
-	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), HAL_MAX_DELAY);
-	uint32_t startTime = HAL_GetTick();
-
-	// Loop until prompt is received or timeout occurs
-	char status_msg[200];
-	while (strstr((char*) rxBuffer, ">") == NULL) {
-		HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), 5000);
-
-		// Check timeout
-		if ((HAL_GetTick() - startTime) > 5000) {
-			sprintf(status_msg, "-->Time out!\r\n");
-			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
-					strlen(status_msg), HAL_MAX_DELAY);
-			break;
-		}
-	}
-
-	// Log the response from sending AT command.
-	sprintf(status_msg, "-->Initial Response:\n%s\r\n", rxBuffer);
-	HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
-			HAL_MAX_DELAY);
-
-	// Check if the response include the prompt ">"
-	if (strstr((char*) rxBuffer, ">") != NULL) {
-		HAL_UART_Transmit(&huart2, (uint8_t*) additionalData,
-				strlen(additionalData), HAL_MAX_DELAY);
-
-		// Clear the buffer again to receive the final response
-		memset(rxBuffer, 0, sizeof(rxBuffer));
-		HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, sizeof(rxBuffer), 5000);
-
-		// Log the final response.
-		sprintf(status_msg, "-->Final response:\n%s\r\n", rxBuffer);
-		HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
-				HAL_MAX_DELAY);
-		return 1;
-
-	} else {
-
-		sprintf(status_msg, "-->Prompt not found\r\n");
-		return 0;
-	}
 }
 
 void mqttPublish(void) {
-	ATisOK = 0;
-	CGREGisOK = 0;
-	char ATcommand[256];
-	char additionalData[256];
+	// 0. Reset connection.
+	resIsOK = 0;
+	previousTick = HAL_GetTick();
+	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
+		SIMTransmit("AT+CRESET\r\n");
+		if (strstr((char*) rxBuffer, "SMS DONE")) {
+			char status_msg[3000];
+			sprintf(status_msg, "-->FOUND SMS DONE:\n%s\r\n", rxBuffer);
+			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
+					strlen(status_msg),
+					HAL_MAX_DELAY);
+			resIsOK = 1;
+		}
+		HAL_Delay(1000);
+	}
 
 	// 1. Check for OK response for AT
+	resIsOK = 0;
 	previousTick = HAL_GetTick();
-	while (!ATisOK && previousTick + timeOut > HAL_GetTick()) {
+	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
 		SIMTransmit("AT\r\n");
 		if (strstr((char*) rxBuffer, "OK")) {
-			ATisOK = 1;
+			resIsOK = 1;
 		}
-
 		HAL_Delay(1000);
-
 	}
 
-	// 2. Ensure GPRS network is available.
-	if (ATisOK) {
-		previousTick = HAL_GetTick();
-		while (!CGREGisOK && previousTick + timeOut > HAL_GetTick()) {
-			SIMTransmit("AT+CSQ\r\n");
-			SIMTransmit("AT+CREG?\r\n"); // voice/data calls and SMSs
-			SIMTransmit("AT+CGREG?\r\n"); // network allowing the access to internet.
-			if (strstr((char*) rxBuffer, "+CGREG: 0,1")) {
-				CGREGisOK = 1;
-			}
-		}
-	}
+	// 2. Check the certificate list
+	SIMTransmit("AT+CCERTLIST\r\n");
 
-	// If registered
-	if (CGREGisOK) {
-		// 1.Ensure GPRS network is available.
-		sprintf(ATcommand, "AT+CGSOCKCONT=1,\"IP\",\"%s\"\r\n", apn);
-		SIMTransmit(ATcommand);
-		SIMTransmit("AT+CGPADDR\r\n");
+	// 3. Configure SSL with certificates.
+	SIMTransmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
+	SIMTransmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
+	SIMTransmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
+	SIMTransmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
+	SIMTransmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
 
-		// 2. Start MQTT service, activate PDP context
-		SIMTransmit("AT+CMQTTSTART\r\n");
+	// 4. Generate client and will topic
+	SIMTransmit("AT+CMQTTSTART\r\n");
+	SIMTransmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
+	SIMTransmit("AT+CMQTTSSLCFG=0,0\r\n");
 
-		// 3. Acquire a client.
-		SIMTransmit("AT+CMQTTACCQ=0,\"client01\"\r\n");
+	// 5. Set the Will Topic
+	sprintf(ATcommand, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
+	SIMTransmit(ATcommand);
+	SIMTransmit(topic_will); // Send the Will Topic
 
-		// 4. Connect to MQTT server
-		sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
-		SIMTransmit(ATcommand);
+	// 6. Set the Will Message
+	sprintf(ATcommand, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
+	SIMTransmit(ATcommand);
+	SIMTransmit(will_message); // Send the Will Message
 
+	// 7. Connect to aws.
+	sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
+	SIMTransmit(ATcommand);
 
-		// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+	// 8. Subscribe to "topic/cmd"
+	sprintf(ATcommand, "AT+CMQTTSUBTOPIC=0,9,1\r\n", strlen(topic_cmd));
+	SIMTransmit(ATcommand);
+	sprintf(ATcommand, "%s\r\n", topic_cmd);
+	SIMTransmit(ATcommand);
+	SIMTransmit("AT+CMQTTSUB=0\r\n");
 
-		// 5. Set the topic for publish message "topic/cmd".
-		// Question1: How to send a multipart message?
-		// When we send the first command to set the topic, we are suppposed to receive a ">" as reposnse.
-		// Once we receive that response, we should follow up and send the name of the topic.
-		// What is the best way to do this ?
-		// I noticed that AT+CGREG gives me 0,3 reponse instead of 0,1. Could this be the reason?
-		// I have tried 2 options:
-		// Option 1: Use \r\n in both command and topic and don't bother to use while loop to check whether we have receivied the prompt signal ">".
-		// I see this working in a youtuber video.
-		sprintf(ATcommand,"AT+CMQTTTOPIC=0,%d",strlen(topic_cmd));
-		SIMTransmit(ATcommand);
-		sprintf(ATcommand,"%s\x1A",topic_cmd);
-		SIMTransmit(ATcommand);
+	// 9. Set topic to publish.
+	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	SIMTransmit(ATcommand);
+	sprintf(ATcommand, "%s\r\n", topic_sensor);
+	SIMTransmit(ATcommand);
 
-		// Option 2: Use while loop and wait for the ">" sign before sending the topic name.
-		// This also doesn't work. It always hits timeout.
-//		sprintf(ATcommand,"AT+CMQTTTOPIC=0,%d", strlen(topic_cmd));
-//		sprintf(additionalData,"%s\x1A", topic_cmd);
-//		SIMTransmitWithPrompt(ATcommand, additionalData);
+	// - Define payload.
+	const char* msg_sensor = "{\"message\":\"Hello from sim7600\"}"; // Correctly formatted JSON string
+	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor)); // Correct syntax with a comma added
+	SIMTransmit(ATcommand);
+	SIMTransmit(msg_sensor);
 
-		// <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+	// Publish
+	SIMTransmit("AT+CMQTTPUB=0,1,60\r\n");
 
-		// Question 2. Why do I need to always restart the SIM module in order to not have the followiing error:
-//		-->Command and res:
-//		AT+CGPADDR
-//
-//		+CGPADDR: 1,100.111.74.74
-//		+CGPADDR: 2,0.0.0.0,0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
-//		+CGPADDR: 3,0.0.0.0,0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0
-//		+CGPADDR: 4,0...
-//		-->Command and res:
-//		0AT+CMQTTSTART
-//
-//		+CMQTTSTART: 23
-//
-//		ERROR
-
-		// 6. Set the payload
-		sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n",
-				strlen("Hello from sim7600"));
-		SIMTransmit(ATcommand);
-		SIMTransmit("Hello from sim7600");
-//
-//		// 7. Publish.
-//		SIMTransmit("AT+CMQTTPUB=0,1,60\r\n");
-//
-//		// 8. Disconnect
-//		SIMTransmit("AT+CMQTTDISC=0,120\r\n"); // Disconnect from Server
-//		SIMTransmit("AT+CMQTTREL=0\r\n"); // Release the Client
-//		SIMTransmit("AT+CMQTTSTOP\r\n"); // Stop MQTT Service
-
-	}
 }
 
 /* USER CODE END 0 */
