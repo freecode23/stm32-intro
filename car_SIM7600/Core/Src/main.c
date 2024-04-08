@@ -63,13 +63,15 @@ static void MX_USART3_UART_Init(void);
 /* USER CODE BEGIN 0 */
 const char apn[] = "vzwinternet";
 
-// Use tcp for non secure conenction.
+// Use tcp for non secure connection.
 const char host[] = "tcp://apv3187879vov-ats.iot.us-east-2.amazonaws.com";
 const int port = 8883;
-const char topic_cmd[] = "topic/cmd";
-const char topic_will[] = "topic/will";
 char *will_message = "SIMCom Connected!";
+const char topic_will[] = "topic/will";
+const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
+const char* msg_from_aws = "{\"message\":\"Yo from Go\"}";
+volatile uint8_t cmdReceived = 0;
 const uint32_t timeOut = 10000;
 uint8_t rxBuffer[2000] = { };
 uint8_t resIsOK = 0;
@@ -94,7 +96,7 @@ void SIMTransmit(const char *cmd) {
 	HAL_MAX_DELAY);
 }
 
-void mqttPublish(void) {
+void MQTT_Init(void) {
 	// 0. Reset connection.
 	resIsOK = 0;
 	previousTick = HAL_GetTick();
@@ -140,39 +142,45 @@ void mqttPublish(void) {
 	// 5. Set the Will Topic
 	sprintf(ATcommand, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
 	SIMTransmit(ATcommand);
-	SIMTransmit(topic_will); // Send the Will Topic
+	SIMTransmit(topic_will);
 
 	// 6. Set the Will Message
 	sprintf(ATcommand, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
 	SIMTransmit(ATcommand);
-	SIMTransmit(will_message); // Send the Will Message
+	SIMTransmit(will_message);
 
 	// 7. Connect to aws.
 	sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
 	SIMTransmit(ATcommand);
 
+
 	// 8. Subscribe to "topic/cmd"
-	sprintf(ATcommand, "AT+CMQTTSUBTOPIC=0,9,1\r\n", strlen(topic_cmd));
+	sprintf(ATcommand, "AT+CMQTTSUBTOPIC=0,%d,1\r\n", strlen(topic_cmd));
 	SIMTransmit(ATcommand);
 	sprintf(ATcommand, "%s\r\n", topic_cmd);
 	SIMTransmit(ATcommand);
 	SIMTransmit("AT+CMQTTSUB=0\r\n");
 
-	// 9. Set topic to publish.
+	// 9. Set topic to publish (this is working!)
 	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
 	SIMTransmit(ATcommand);
 	sprintf(ATcommand, "%s\r\n", topic_sensor);
 	SIMTransmit(ATcommand);
 
 	// - Define payload.
-	const char* msg_sensor = "{\"message\":\"Hello from sim7600\"}"; // Correctly formatted JSON string
-	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor)); // Correct syntax with a comma added
+	const char* msg_sensor = "{\"message\":\"Hello from stm32\"}";
+	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
 	SIMTransmit(ATcommand);
 	SIMTransmit(msg_sensor);
 
-	// Publish
+	// - Publish
 	SIMTransmit("AT+CMQTTPUB=0,1,60\r\n");
 
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+	cmdReceived = 1;
+	HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
 }
 
 /* USER CODE END 0 */
@@ -207,17 +215,29 @@ int main(void) {
 	MX_USART2_UART_Init();
 	MX_USART3_UART_Init();
 	/* USER CODE BEGIN 2 */
-
+	HAL_UART_Transmit(&huart3, (uint8_t*) "App started.\r\n",
+			strlen("App started.\r\n"),
+			HAL_MAX_DELAY);
+	MQTT_Init();
+	HAL_UART_Receive_IT(&huart2, rxBuffer, 120);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
-	HAL_UART_Transmit(&huart3, (uint8_t*) "App started.\r\n",
-			strlen("App started.\r\n"),
-			HAL_MAX_DELAY);
-
-	mqttPublish();
 	while (1) {
+		if (cmdReceived) {
+			cmdReceived = 0;
+
+			// Log the response received by the SIM module.
+			char status_msg[3000];
+			sprintf(status_msg, "-->Command Received:\n%s\r\n", rxBuffer);
+			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
+					strlen(status_msg),
+					HAL_MAX_DELAY);
+
+			// Ready to receive more data
+			HAL_UART_Receive_IT(&huart2, rxBuffer, 120);
+		}
 
 		/* USER CODE END WHILE */
 
@@ -474,12 +494,7 @@ static void MX_GPIO_Init(void) {
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 
-	if (GPIO_Pin == B1_Pin) // Check if the interrupt comes from the button pin
-	{
-		// If button is pressed, set the send SMS to SIM7600 to true.
-		send_sms = 1;
 
-	}
 }
 
 /* USER CODE END 4 */
