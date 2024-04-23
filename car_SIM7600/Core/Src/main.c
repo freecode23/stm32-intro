@@ -70,28 +70,37 @@ char *will_message = "SIMCom Connected!";
 const char topic_will[] = "topic/will";
 const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
-const char* msg_from_aws = "{\"message\":\"Yo from Go\"}";
 volatile uint8_t cmdReceived = 0;
 const uint32_t timeOut = 10000;
-uint8_t rxBuffer[2000] = { };
+
+// response_ATcmd is a buffer for all the responses received when we initialize MQTT.
+uint8_t response_ATcmd[2000] = { };
 uint8_t resIsOK = 0;
 uint32_t previousTick;
-uint16_t readValue;
+
+// receivedByte is a single byte when command is published.
+uint8_t receivedByte;
+
+// cmdBuffer stores all the MQTT message when command is published.
+uint8_t cmdBuffer[200] = { };
+uint8_t cmdBufferIndex = 0;
+char cmdMessage[100];
+uint8_t messageLength;
 
 /**
  * Send an AT command to SIM module, and log the command and response to UART.
  */
-void SIMTransmit(const char *cmd) {
+void SIM_Transmit(const char *cmd) {
 
-	memset(rxBuffer, 0, sizeof(rxBuffer));
+	memset(response_ATcmd, 0, sizeof(response_ATcmd));
 
 	// Send the AT command to SIM7600
 	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(&huart2, (uint8_t*) rxBuffer, 400, 2000);
+	HAL_UART_Receive(&huart2, (uint8_t*) response_ATcmd, 400, 2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
-	sprintf(status_msg, "-->Command and res:\n%s\r\n", rxBuffer);
+	sprintf(status_msg, "-->Command and res:\n%s\r\n", response_ATcmd);
 	HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
 	HAL_MAX_DELAY);
 }
@@ -101,10 +110,10 @@ void MQTT_Init(void) {
 	resIsOK = 0;
 	previousTick = HAL_GetTick();
 	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
-		SIMTransmit("AT+CRESET\r\n");
-		if (strstr((char*) rxBuffer, "SMS DONE")) {
+		SIM_Transmit("AT+CRESET\r\n");
+		if (strstr((char*) response_ATcmd, "SMS DONE")) {
 			char status_msg[3000];
-			sprintf(status_msg, "-->FOUND SMS DONE:\n%s\r\n", rxBuffer);
+			sprintf(status_msg, "-->FOUND SMS DONE:\n%s\r\n", response_ATcmd);
 			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
 					strlen(status_msg),
 					HAL_MAX_DELAY);
@@ -117,70 +126,107 @@ void MQTT_Init(void) {
 	resIsOK = 0;
 	previousTick = HAL_GetTick();
 	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
-		SIMTransmit("AT\r\n");
-		if (strstr((char*) rxBuffer, "OK")) {
+		SIM_Transmit("AT\r\n");
+		if (strstr((char*) response_ATcmd, "OK")) {
 			resIsOK = 1;
 		}
 		HAL_Delay(1000);
 	}
 
 	// 2. Check the certificate list
-	SIMTransmit("AT+CCERTLIST\r\n");
+	SIM_Transmit("AT+CCERTLIST\r\n");
 
 	// 3. Configure SSL with certificates.
-	SIMTransmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
-	SIMTransmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
-	SIMTransmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
-	SIMTransmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
-	SIMTransmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
+	SIM_Transmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
+	SIM_Transmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
+	SIM_Transmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
+	SIM_Transmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
+	SIM_Transmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
 
 	// 4. Generate client and will topic
-	SIMTransmit("AT+CMQTTSTART\r\n");
-	SIMTransmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
-	SIMTransmit("AT+CMQTTSSLCFG=0,0\r\n");
+	SIM_Transmit("AT+CMQTTSTART\r\n");
+	SIM_Transmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
+	SIM_Transmit("AT+CMQTTSSLCFG=0,0\r\n");
 
 	// 5. Set the Will Topic
 	sprintf(ATcommand, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
-	SIMTransmit(ATcommand);
-	SIMTransmit(topic_will);
+	SIM_Transmit(ATcommand);
+	SIM_Transmit(topic_will);
 
 	// 6. Set the Will Message
 	sprintf(ATcommand, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
-	SIMTransmit(ATcommand);
-	SIMTransmit(will_message);
+	SIM_Transmit(ATcommand);
+	SIM_Transmit(will_message);
 
 	// 7. Connect to aws.
 	sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
-	SIMTransmit(ATcommand);
-
+	SIM_Transmit(ATcommand);
 
 	// 8. Subscribe to "topic/cmd"
 	sprintf(ATcommand, "AT+CMQTTSUBTOPIC=0,%d,1\r\n", strlen(topic_cmd));
-	SIMTransmit(ATcommand);
+	SIM_Transmit(ATcommand);
 	sprintf(ATcommand, "%s\r\n", topic_cmd);
-	SIMTransmit(ATcommand);
-	SIMTransmit("AT+CMQTTSUB=0\r\n");
+	SIM_Transmit(ATcommand);
+	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
 	// 9. Set topic to publish (this is working!)
-	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
-	SIMTransmit(ATcommand);
-	sprintf(ATcommand, "%s\r\n", topic_sensor);
-	SIMTransmit(ATcommand);
-
-	// - Define payload.
-	const char* msg_sensor = "{\"message\":\"Hello from stm32\"}";
-	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
-	SIMTransmit(ATcommand);
-	SIMTransmit(msg_sensor);
-
-	// - Publish
-	SIMTransmit("AT+CMQTTPUB=0,1,60\r\n");
+//	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+//	SIM_Transmit(ATcommand);
+//	sprintf(ATcommand, "%s\r\n", topic_sensor);
+//	SIM_Transmit(ATcommand);
+//
+//	// - Define payload.
+//	const char *msg_sensor = "{\"message\":\"Hello from stm32\"}";
+//	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
+//	SIM_Transmit(ATcommand);
+//	SIM_Transmit(msg_sensor);
+//
+//	// - Publish
+//	SIM_Transmit("AT+CMQTTPUB=0,1,60\r\n");
 
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-	cmdReceived = 1;
-	HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+
+	// Received a byte from SIM7600 module.
+	if (huart == &huart2) {
+
+		// We received the full message.
+		if (receivedByte == '}') {
+			cmdReceived = 1;
+			cmdBuffer[cmdBufferIndex++] = '\0';
+
+			// Get the start and and index of the message
+			// end index is the index of the last quote
+			uint8_t endIndex = cmdBufferIndex - 2;
+			uint8_t startIndex = endIndex - 1;
+			for (; startIndex > 0; startIndex--) {
+				// if character is not a quote, skip.
+				if (cmdBuffer[startIndex] != '"') {
+					continue;
+				}
+				// startIndex now points to the first character.
+				startIndex += 1;
+				break;
+			}
+
+			// Copy the message from buffer and store to cmdMessage.
+			// "hello man"
+			messageLength = endIndex - startIndex; // e.g 104 - 95. message length = 9
+
+
+			if (messageLength > sizeof(cmdMessage) - 1) {
+			    messageLength = sizeof(cmdMessage) - 1;  // Prevent buffer overflow
+			}
+
+			strncpy(cmdMessage, (char*) cmdBuffer + startIndex, messageLength);
+			cmdMessage[messageLength] = '\0';
+
+		} else {
+			cmdBuffer[cmdBufferIndex++] = receivedByte;
+			HAL_UART_Receive_IT(&huart2, &receivedByte, 1); // Continue receiving next byte
+		}
+	}
 }
 
 /* USER CODE END 0 */
@@ -219,7 +265,9 @@ int main(void) {
 			strlen("App started.\r\n"),
 			HAL_MAX_DELAY);
 	MQTT_Init();
-	HAL_UART_Receive_IT(&huart2, rxBuffer, 120);
+
+	// Ready to receive command from AWS byte by byte.
+	HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
@@ -229,14 +277,12 @@ int main(void) {
 			cmdReceived = 0;
 
 			// Log the response received by the SIM module.
-			char status_msg[3000];
-			sprintf(status_msg, "-->Command Received:\n%s\r\n", rxBuffer);
-			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
-					strlen(status_msg),
-					HAL_MAX_DELAY);
+			HAL_UART_Transmit(&huart3, (uint8_t*) cmdMessage, messageLength,
+			HAL_MAX_DELAY);
 
-			// Ready to receive more data
-			HAL_UART_Receive_IT(&huart2, rxBuffer, 120);
+			// Ready to receive next command.
+			cmdBufferIndex = 0;
+			HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
 		}
 
 		/* USER CODE END WHILE */
@@ -493,7 +539,6 @@ static void MX_GPIO_Init(void) {
 
 /* USER CODE BEGIN 4 */
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-
 
 }
 
