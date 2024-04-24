@@ -169,7 +169,7 @@ void MQTT_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-	// 9. Set topic to publish (this is working!)
+//	// 9. Set topic to publish (this is working!)
 //	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
 //	SIM_Transmit(ATcommand);
 //	sprintf(ATcommand, "%s\r\n", topic_sensor);
@@ -214,9 +214,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			// "hello man"
 			messageLength = endIndex - startIndex; // e.g 104 - 95. message length = 9
 
-
 			if (messageLength > sizeof(cmdMessage) - 1) {
-			    messageLength = sizeof(cmdMessage) - 1;  // Prevent buffer overflow
+				messageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
 			}
 
 			strncpy(cmdMessage, (char*) cmdBuffer + startIndex, messageLength);
@@ -237,7 +236,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
  */
 int main(void) {
 	/* USER CODE BEGIN 1 */
-
+	// This program will first initialize connection with AWS IoT MQTT broken.
+	// If a message is published on topic/cmd, the message received from SIM7600 module will be received on uart3,
+	// it will then log to uart3
+	//
+	// If a user button is pressed on STM32, it will publish a message on topic/sensor
 	/* USER CODE END 1 */
 
 	/* MCU Configuration--------------------------------------------------------*/
@@ -277,6 +280,9 @@ int main(void) {
 			cmdReceived = 0;
 
 			// Log the response received by the SIM module.
+		    cmdMessage[messageLength] = '\n';  // Add new character
+		    cmdMessage[messageLength + 1] = '\0';  // Re-null-terminate the string
+		    messageLength++;
 			HAL_UART_Transmit(&huart3, (uint8_t*) cmdMessage, messageLength,
 			HAL_MAX_DELAY);
 
@@ -538,8 +544,29 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+void publishMessage(void) {
 
+	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	SIM_Transmit(ATcommand);
+	sprintf(ATcommand, "%s\r\n", topic_sensor);
+	SIM_Transmit(ATcommand);
+
+	// Define the payload
+	const char *msg_sensor = "{\"message\":\"Hello from stm32\"}";
+	char ATcommand[256]; // Ensure this buffer is large enough for your commands
+	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
+	SIM_Transmit(ATcommand);
+	SIM_Transmit(msg_sensor);
+
+	// Publish the message
+	SIM_Transmit("AT+CMQTTPUB=0,1,60\r\n");
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
+	if (GPIO_Pin == B1_Pin) // Check if the interrupt comes from the button pin
+	{
+		publishMessage();
+	}
 }
 
 /* USER CODE END 4 */
