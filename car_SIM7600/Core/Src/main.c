@@ -41,6 +41,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim4;
+
 UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
@@ -55,6 +57,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -169,7 +172,8 @@ void MQTT_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-//	// 9. Set topic to publish (this is working!)
+	// 9. Set topic to publish (this is moved to publish_message function so
+	// that we are setting the topic every single time before actually sending the message.
 //	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
 //	SIM_Transmit(ATcommand);
 //	sprintf(ATcommand, "%s\r\n", topic_sensor);
@@ -263,26 +267,45 @@ int main(void) {
 	MX_GPIO_Init();
 	MX_USART2_UART_Init();
 	MX_USART3_UART_Init();
+	MX_TIM4_Init();
 	/* USER CODE BEGIN 2 */
 	HAL_UART_Transmit(&huart3, (uint8_t*) "App started.\r\n",
 			strlen("App started.\r\n"),
 			HAL_MAX_DELAY);
+
+	// 1. MQTT setup.
 	MQTT_Init();
 
 	// Ready to receive command from AWS byte by byte.
 	HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
+
+	// 2. Timer4 PWM set up.
+	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
+		HAL_UART_Transmit(&huart3, (uint8_t*) "Error initializing base timer\r\n",
+				strlen("Error initializing base timer\r\n"),
+				HAL_MAX_DELAY);
+		Error_Handler();
+	}
+	if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4)) {
+		HAL_UART_Transmit(&huart3, (uint8_t*) "Error initializing pwm timer\r\n",
+				strlen("Error initializing pwm timer\r\n"),
+				HAL_MAX_DELAY);
+		Error_Handler();
+	}
 	/* USER CODE END 2 */
 
 	/* Infinite loop */
 	/* USER CODE BEGIN WHILE */
 	while (1) {
+
+		// 1. Log command from SIM module
 		if (cmdReceived) {
 			cmdReceived = 0;
 
 			// Log the response received by the SIM module.
-		    cmdMessage[messageLength] = '\n';  // Add new character
-		    cmdMessage[messageLength + 1] = '\0';  // Re-null-terminate the string
-		    messageLength++;
+			cmdMessage[messageLength] = '\n';  // Add new character
+			cmdMessage[messageLength + 1] = '\0'; // Re-null-terminate the string
+			messageLength++;
 			HAL_UART_Transmit(&huart3, (uint8_t*) cmdMessage, messageLength,
 			HAL_MAX_DELAY);
 
@@ -290,6 +313,12 @@ int main(void) {
 			cmdBufferIndex = 0;
 			HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
 		}
+
+		// 2. Drive motors.
+		// Direction 1
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 100);
 
 		/* USER CODE END WHILE */
 
@@ -334,6 +363,53 @@ void SystemClock_Config(void) {
 	if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK) {
 		Error_Handler();
 	}
+}
+
+/**
+ * @brief TIM4 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM4_Init(void) {
+
+	/* USER CODE BEGIN TIM4_Init 0 */
+
+	/* USER CODE END TIM4_Init 0 */
+
+	TIM_MasterConfigTypeDef sMasterConfig = { 0 };
+	TIM_OC_InitTypeDef sConfigOC = { 0 };
+
+	/* USER CODE BEGIN TIM4_Init 1 */
+
+	/* USER CODE END TIM4_Init 1 */
+	htim4.Instance = TIM4;
+	htim4.Init.Prescaler = 15;
+	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim4.Init.Period = 49999;
+	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
+	if (HAL_TIM_PWM_Init(&htim4) != HAL_OK) {
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	sConfigOC.OCMode = TIM_OCMODE_PWM1;
+	sConfigOC.Pulse = 0;
+	sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+	sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+	if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_2)
+			!= HAL_OK) {
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM4_Init 2 */
+
+	/* USER CODE END TIM4_Init 2 */
+	HAL_TIM_MspPostInit(&htim4);
+
 }
 
 /**
@@ -426,6 +502,9 @@ static void MX_GPIO_Init(void) {
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
 	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+
+	/*Configure GPIO pin Output Level */
+	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 | GPIO_PIN_5, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin : CS_I2C_SPI_Pin */
 	GPIO_InitStruct.Pin = CS_I2C_SPI_Pin;
@@ -520,6 +599,13 @@ static void MX_GPIO_Init(void) {
 	GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	HAL_GPIO_Init(OTG_FS_OverCurrent_GPIO_Port, &GPIO_InitStruct);
+
+	/*Configure GPIO pins : PB4 PB5 */
+	GPIO_InitStruct.Pin = GPIO_PIN_4 | GPIO_PIN_5;
+	GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+	GPIO_InitStruct.Pull = GPIO_NOPULL;
+	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 	/*Configure GPIO pins : Audio_SCL_Pin Audio_SDA_Pin */
 	GPIO_InitStruct.Pin = Audio_SCL_Pin | Audio_SDA_Pin;
