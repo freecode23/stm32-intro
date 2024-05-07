@@ -98,13 +98,13 @@ void SIM_Transmit(const char *cmd) {
 	memset(response_ATcmd, 0, sizeof(response_ATcmd));
 
 	// Send the AT command to SIM7600
-	HAL_UART_Transmit(&huart2, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(&huart2, (uint8_t*) response_ATcmd, 400, 2000);
+	HAL_UART_Transmit(&huart3, (uint8_t*) cmd, strlen(cmd), 2000);
+	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, 400, 2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
 	sprintf(status_msg, "-->Command and res:\n%s\r\n", response_ATcmd);
-	HAL_UART_Transmit(&huart3, (uint8_t*) status_msg, strlen(status_msg),
+	HAL_UART_Transmit(&huart2, (uint8_t*) status_msg, strlen(status_msg),
 	HAL_MAX_DELAY);
 }
 
@@ -115,11 +115,6 @@ void MQTT_Init(void) {
 	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
 		SIM_Transmit("AT+CRESET\r\n");
 		if (strstr((char*) response_ATcmd, "SMS DONE")) {
-			char status_msg[3000];
-			sprintf(status_msg, "-->FOUND SMS DONE:\n%s\r\n", response_ATcmd);
-			HAL_UART_Transmit(&huart3, (uint8_t*) status_msg,
-					strlen(status_msg),
-					HAL_MAX_DELAY);
 			resIsOK = 1;
 		}
 		HAL_Delay(1000);
@@ -173,27 +168,13 @@ void MQTT_Init(void) {
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
 	// 9. Set topic to publish (this is moved to publish_message function so
-	// that we are setting the topic every single time before actually sending the message.
-//	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
-//	SIM_Transmit(ATcommand);
-//	sprintf(ATcommand, "%s\r\n", topic_sensor);
-//	SIM_Transmit(ATcommand);
-//
-//	// - Define payload.
-//	const char *msg_sensor = "{\"message\":\"Hello from stm32\"}";
-//	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
-//	SIM_Transmit(ATcommand);
-//	SIM_Transmit(msg_sensor);
-//
-//	// - Publish
-//	SIM_Transmit("AT+CMQTTPUB=0,1,60\r\n");
 
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	// Received a byte from SIM7600 module.
-	if (huart == &huart2) {
+	if (huart == &huart3) {
 
 		// We received the full message.
 		if (receivedByte == '}') {
@@ -227,7 +208,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 		} else {
 			cmdBuffer[cmdBufferIndex++] = receivedByte;
-			HAL_UART_Receive_IT(&huart2, &receivedByte, 1); // Continue receiving next byte
+			HAL_UART_Receive_IT(&huart3, &receivedByte, 1); // Continue receiving next byte
 		}
 	}
 }
@@ -269,26 +250,25 @@ int main(void) {
 	MX_USART3_UART_Init();
 	MX_TIM4_Init();
 	/* USER CODE BEGIN 2 */
-	HAL_UART_Transmit(&huart3, (uint8_t*) "App started.\r\n",
+	HAL_UART_Transmit(&huart2, (uint8_t*) "App started.\r\n",
 			strlen("App started.\r\n"),
 			HAL_MAX_DELAY);
 
 	// 1. MQTT setup.
 	MQTT_Init();
-
 	// Ready to receive command from AWS byte by byte.
-	HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
+	HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 
 	// 2. Timer4 PWM set up.
 	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
-		HAL_UART_Transmit(&huart3,
+		HAL_UART_Transmit(&huart2,
 				(uint8_t*) "Error initializing base timer\r\n",
 				strlen("Error initializing base timer\r\n"),
 				HAL_MAX_DELAY);
 		Error_Handler();
 	}
-	if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4)) {
-		HAL_UART_Transmit(&huart3,
+	if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_2)) {
+		HAL_UART_Transmit(&huart2,
 				(uint8_t*) "Error initializing pwm timer\r\n",
 				strlen("Error initializing pwm timer\r\n"),
 				HAL_MAX_DELAY);
@@ -308,16 +288,15 @@ int main(void) {
 			cmdMessage[messageLength] = '\n';
 			cmdMessage[messageLength + 1] = '\0';
 			messageLength++;
-			HAL_UART_Transmit(&huart3, (uint8_t*) cmdMessage, messageLength,
+			HAL_UART_Transmit(&huart2, (uint8_t*) cmdMessage, messageLength,
 			HAL_MAX_DELAY);
 
 			if (strstr((char*) cmdMessage, "forward")) {
-				// 2. Drive motor 1 (Front Left)
+				// 2. Front Left)
 				// Forward
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
 				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
-
 
 			} else if (strstr((char*) cmdMessage, "backward")) {
 				// Backward
@@ -325,12 +304,17 @@ int main(void) {
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
 				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
 
-			}
+			} else if (strstr((char*) cmdMessage, "stop")) {
+				// f
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 3000);
 
+			}
 
 			// Ready to receive next command.
 			cmdBufferIndex = 0;
-			HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
+			HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 		}
 
 		/* USER CODE END WHILE */
@@ -514,7 +498,8 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
+			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
+			GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 | GPIO_PIN_5, GPIO_PIN_RESET);
