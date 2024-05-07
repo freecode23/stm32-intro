@@ -281,13 +281,15 @@ int main(void) {
 
 	// 2. Timer4 PWM set up.
 	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
-		HAL_UART_Transmit(&huart3, (uint8_t*) "Error initializing base timer\r\n",
+		HAL_UART_Transmit(&huart3,
+				(uint8_t*) "Error initializing base timer\r\n",
 				strlen("Error initializing base timer\r\n"),
 				HAL_MAX_DELAY);
 		Error_Handler();
 	}
 	if (HAL_TIM_PWM_Start(&htim4, TIM_CHANNEL_4)) {
-		HAL_UART_Transmit(&huart3, (uint8_t*) "Error initializing pwm timer\r\n",
+		HAL_UART_Transmit(&huart3,
+				(uint8_t*) "Error initializing pwm timer\r\n",
 				strlen("Error initializing pwm timer\r\n"),
 				HAL_MAX_DELAY);
 		Error_Handler();
@@ -303,22 +305,33 @@ int main(void) {
 			cmdReceived = 0;
 
 			// Log the response received by the SIM module.
-			cmdMessage[messageLength] = '\n';  // Add new character
-			cmdMessage[messageLength + 1] = '\0'; // Re-null-terminate the string
+			cmdMessage[messageLength] = '\n';
+			cmdMessage[messageLength + 1] = '\0';
 			messageLength++;
 			HAL_UART_Transmit(&huart3, (uint8_t*) cmdMessage, messageLength,
 			HAL_MAX_DELAY);
+
+			if (strstr((char*) cmdMessage, "forward")) {
+				// 2. Drive motor 1 (Front Left)
+				// Forward
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
+
+
+			} else if (strstr((char*) cmdMessage, "backward")) {
+				// Backward
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
+
+			}
+
 
 			// Ready to receive next command.
 			cmdBufferIndex = 0;
 			HAL_UART_Receive_IT(&huart2, &receivedByte, 1);
 		}
-
-		// 2. Drive motors.
-		// Direction 1
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
-		HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-		__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 100);
 
 		/* USER CODE END WHILE */
 
