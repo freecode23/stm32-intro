@@ -167,7 +167,17 @@ void MQTT_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-	// 9. Set topic to publish (this is moved to publish_message function so
+	// 9. GPS
+	SIM_Transmit("AT+CGPSNMEA=1\r\n");
+	SIM_Transmit("AT+CGPS=1\r\n");
+	SIM_Transmit("AT+CGPS??\r\n");
+	SIM_Transmit("AT+CGPSINFO\r\n");
+	SIM_Transmit("AT+CGPSNMEA?\r\n"); // Check if NMEA is is set correctly
+
+	// Question: How to make this work in main while loop.
+	// I want to call AT+CGPSINFO every 2 seconds.
+	HAL_Delay(2000);
+	SIM_Transmit("AT+CGPSINFO\r\n");
 
 }
 
@@ -292,23 +302,22 @@ int main(void) {
 			HAL_MAX_DELAY);
 
 			if (strstr((char*) cmdMessage, "forward")) {
-				// 2. Front Left)
-				// Forward
+				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
 
 			} else if (strstr((char*) cmdMessage, "backward")) {
-				// Backward
+				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 150);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
 
 			} else if (strstr((char*) cmdMessage, "stop")) {
-				// f
+				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 3000);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
 
 			}
 
@@ -316,6 +325,23 @@ int main(void) {
 			cmdBufferIndex = 0;
 			HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 		}
+
+		// TODO:
+		// Option 1:
+		// Send GPS data every 2 seconds.
+		// 0. Create new variable uint8 sendGPSdata = 0
+		// 1. Change the pre-scaler for timer4 to make the interrupt intervals 2 seconds
+		// 2. Then in HAL_TIM_PeriodElapsedCallback, set sendGPSdata = 1
+		// 3. Check in this line if (sendGPSdata)
+		// --- then receive bytes until we receive `OK`.
+		// --- Log this bytes to USART
+
+		// Option2:
+		// Use the AT command : AT+CGPSINFO=<time>
+		// The range of time is 0-255, unit is second, after set <time> will report the GPS information every the seconds.
+		// Then go to the function USART3 callback and check if we reached the end of the line.
+		// May want to test using Coolterm to directly enter AT command and see feedback.
+		// Just for sanity check and see if we are actually receiving the data every 2 seconds.
 
 		/* USER CODE END WHILE */
 
@@ -380,9 +406,9 @@ static void MX_TIM4_Init(void) {
 
 	/* USER CODE END TIM4_Init 1 */
 	htim4.Instance = TIM4;
-	htim4.Init.Prescaler = 15;
+	htim4.Init.Prescaler = 247;
 	htim4.Init.CounterMode = TIM_COUNTERMODE_UP;
-	htim4.Init.Period = 49999;
+	htim4.Init.Period = 64515;
 	htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
 	htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
 	if (HAL_TIM_PWM_Init(&htim4) != HAL_OK) {
