@@ -168,16 +168,6 @@ void MQTT_GPS_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-//	// 9. Set up GPS
-//	SIM_Transmit("AT+CGPSNMEA=1\r\n"); // Set to only receive GPGGA
-//
-//	// Turn on.
-//	SIM_Transmit("AT+CGPS=1\r\n");
-//	SIM_Transmit("AT+CGPSINFO=2\r\n"); // Set to get message every 2 seconds
-//
-//	// Check if the setting is transmitted.
-//	SIM_Transmit("AT+CGPSINFO?\r\n");
-//	SIM_Transmit("AT+CGPSNMEA?\r\n");
 
 	// 9. GPS
 	SIM_Transmit("AT+CGPS=0\r\n");
