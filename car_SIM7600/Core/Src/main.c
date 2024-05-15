@@ -168,16 +168,28 @@ void MQTT_GPS_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-	// 9. Set up GPS
-	SIM_Transmit("AT+CGPSNMEA=1\r\n"); // Set to only receive GPGGA
+//	// 9. Set up GPS
+//	SIM_Transmit("AT+CGPSNMEA=1\r\n"); // Set to only receive GPGGA
+//
+//	// Turn on.
+//	SIM_Transmit("AT+CGPS=1\r\n");
+//	SIM_Transmit("AT+CGPSINFO=2\r\n"); // Set to get message every 2 seconds
+//
+//	// Check if the setting is transmitted.
+//	SIM_Transmit("AT+CGPSINFO?\r\n");
+//	SIM_Transmit("AT+CGPSNMEA?\r\n");
 
-	// Turn on.
+	// 9. GPS
+	SIM_Transmit("AT+CGPS=0\r\n");
+	//Configure GNSS support mode
+	SIM_Transmit("AT+CGNSSMODE=15,1\r\n");
+	// Configure NMEA sentence type
+	SIM_Transmit("AT+CGPSNMEA=1\r\n");
+	// Set NMEA output rate to 10Hz
+	SIM_Transmit("AT+CGPSNMEARATE=1\r\n");
 	SIM_Transmit("AT+CGPS=1\r\n");
-	SIM_Transmit("AT+CGPSINFO=2\r\n"); // Set to get message every 2 seconds
-
-	// Check if the setting is transmitted.
-	SIM_Transmit("AT+CGPSINFO?\r\n");
-	SIM_Transmit("AT+CGPSNMEA?\r\n");
+	// NMEA Output to AT port
+	SIM_Transmit("AT+CGPSINFOCFG=2,1\r\n");
 
 }
 
