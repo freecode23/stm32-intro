@@ -74,6 +74,7 @@ const char topic_will[] = "topic/will";
 const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
 volatile uint8_t cmdReceived = 0;
+volatile uint8_t dollarReceived = 0;
 const uint32_t timeOut = 10000;
 
 // response_ATcmd is a buffer for all the responses received when we initialize MQTT.
@@ -99,7 +100,7 @@ void SIM_Transmit(const char *cmd) {
 
 	// Send the AT command to SIM7600
 	HAL_UART_Transmit(&huart3, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, 400, 2000);
+	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, sizeof(response_ATcmd), 2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
@@ -108,7 +109,7 @@ void SIM_Transmit(const char *cmd) {
 	HAL_MAX_DELAY);
 }
 
-void MQTT_Init(void) {
+void MQTT_GPS_Init(void) {
 	// 0. Reset connection.
 	resIsOK = 0;
 	previousTick = HAL_GetTick();
@@ -167,17 +168,16 @@ void MQTT_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-	// 9. GPS
-	SIM_Transmit("AT+CGPSNMEA=1\r\n");
-	SIM_Transmit("AT+CGPS=1\r\n");
-	SIM_Transmit("AT+CGPS??\r\n");
-	SIM_Transmit("AT+CGPSINFO\r\n");
-	SIM_Transmit("AT+CGPSNMEA?\r\n"); // Check if NMEA is is set correctly
+	// 9. Set up GPS
+	SIM_Transmit("AT+CGPSNMEA=1\r\n"); // Set to only receive GPGGA
 
-	// Question: How to make this work in main while loop.
-	// I want to call AT+CGPSINFO every 2 seconds.
-	HAL_Delay(2000);
-	SIM_Transmit("AT+CGPSINFO\r\n");
+	// Turn on.
+	SIM_Transmit("AT+CGPS=1\r\n");
+	SIM_Transmit("AT+CGPSINFO=2\r\n"); // Set to get message every 2 seconds
+
+	// Check if the setting is transmitted.
+	SIM_Transmit("AT+CGPSINFO?\r\n");
+	SIM_Transmit("AT+CGPSNMEA?\r\n");
 
 }
 
@@ -186,7 +186,12 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	// Received a byte from SIM7600 module.
 	if (huart == &huart3) {
 
-		// We received the full message.
+		// Case 1: TODO: check if we are receiving GPGGA
+		if (receivedByte == '$') {
+			dollarReceived = 1;
+		}
+
+		// Case 2: We received the full command message.
 		if (receivedByte == '}') {
 			cmdReceived = 1;
 			cmdBuffer[cmdBufferIndex++] = '\0';
@@ -206,7 +211,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			}
 
 			// Copy the message from buffer and store to cmdMessage.
-			// "hello man"
 			messageLength = endIndex - startIndex; // e.g 104 - 95. message length = 9
 
 			if (messageLength > sizeof(cmdMessage) - 1) {
@@ -264,8 +268,8 @@ int main(void) {
 			strlen("App started.\r\n"),
 			HAL_MAX_DELAY);
 
-	// 1. MQTT setup.
-	MQTT_Init();
+	// 1. MQTT and GPS setup.
+	MQTT_GPS_Init();
 	// Ready to receive command from AWS byte by byte.
 	HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 
@@ -327,22 +331,18 @@ int main(void) {
 		}
 
 		// TODO:
-		// Option 1:
-		// Send GPS data every 2 seconds.
-		// 0. Create new variable uint8 sendGPSdata = 0
-		// 1. Change the pre-scaler for timer4 to make the interrupt intervals 2 seconds
-		// 2. Then in HAL_TIM_PeriodElapsedCallback, set sendGPSdata = 1
-		// 3. Check in this line if (sendGPSdata)
-		// --- then receive bytes until we receive `OK`.
-		// --- Log this bytes to USART
-
-		// Option2:
 		// Use the AT command : AT+CGPSINFO=<time>
 		// The range of time is 0-255, unit is second, after set <time> will report the GPS information every the seconds.
 		// Then go to the function USART3 callback and check if we reached the end of the line.
 		// May want to test using Coolterm to directly enter AT command and see feedback.
 		// Just for sanity check and see if we are actually receiving the data every 2 seconds.
+		if (dollarReceived) {
+			HAL_UART_Transmit(&huart2, (uint8_t*) "GPGGA received\r\n",
+					strlen("GPGGA received\r\n"),
+					HAL_MAX_DELAY);
 
+			dollarReceived = 0;
+		}
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
@@ -524,8 +524,7 @@ static void MX_GPIO_Init(void) {
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOD,
-			LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin,
-			GPIO_PIN_RESET);
+	LD4_Pin | LD3_Pin | LD5_Pin | LD6_Pin | Audio_RST_Pin, GPIO_PIN_RESET);
 
 	/*Configure GPIO pin Output Level */
 	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4 | GPIO_PIN_5, GPIO_PIN_RESET);
