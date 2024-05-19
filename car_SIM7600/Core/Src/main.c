@@ -100,7 +100,8 @@ void SIM_Transmit(const char *cmd) {
 
 	// Send the AT command to SIM7600
 	HAL_UART_Transmit(&huart3, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, sizeof(response_ATcmd), 2000);
+	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, sizeof(response_ATcmd),
+			2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
@@ -168,7 +169,6 @@ void MQTT_GPS_Init(void) {
 	SIM_Transmit(ATcommand);
 	SIM_Transmit("AT+CMQTTSUB=0\r\n");
 
-
 	// 9. GPS
 	SIM_Transmit("AT+CGPS=0\r\n");
 	//Configure GNSS support mode
@@ -191,6 +191,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 		// Case 1: TODO: check if we are receiving GPGGA
 		if (receivedByte == '$') {
 			dollarReceived = 1;
+			return;
 		}
 
 		// Case 2: We received the full command message.
@@ -311,19 +312,19 @@ int main(void) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 60000);
 
 			} else if (strstr((char*) cmdMessage, "backward")) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 1000);
 
 			} else if (strstr((char*) cmdMessage, "stop")) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 50000);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_2, 60000);
 
 			}
 
@@ -333,17 +334,14 @@ int main(void) {
 		}
 
 		// TODO:
-		// Use the AT command : AT+CGPSINFO=<time>
-		// The range of time is 0-255, unit is second, after set <time> will report the GPS information every the seconds.
-		// Then go to the function USART3 callback and check if we reached the end of the line.
-		// May want to test using Coolterm to directly enter AT command and see feedback.
-		// Just for sanity check and see if we are actually receiving the data every 2 seconds.
+		// 2. Send string to MQTT
 		if (dollarReceived) {
 			HAL_UART_Transmit(&huart2, (uint8_t*) "GPGGA received\r\n",
 					strlen("GPGGA received\r\n"),
 					HAL_MAX_DELAY);
 
 			dollarReceived = 0;
+			HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 		}
 		/* USER CODE END WHILE */
 
