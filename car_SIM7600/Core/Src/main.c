@@ -74,7 +74,10 @@ const char topic_will[] = "topic/will";
 const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
 volatile uint8_t cmdReceived = 0;
-volatile uint8_t dollarReceived = 0;
+volatile uint8_t receivingCmd = 0;
+volatile uint8_t GPGGAreceived = 0;
+volatile uint8_t receivingGPGGA = 0;
+
 const uint32_t timeOut = 10000;
 
 // response_ATcmd is a buffer for all the responses received when we initialize MQTT.
@@ -85,11 +88,17 @@ uint32_t previousTick;
 // receivedByte is a single byte when command is published.
 uint8_t receivedByte;
 
-// cmdBuffer stores all the MQTT message when command is published.
+// cmdBuffer stores all the command when it is received.
 uint8_t cmdBuffer[200] = { };
 uint8_t cmdBufferIndex = 0;
 char cmdMessage[100];
-uint8_t messageLength;
+uint8_t cmdMessageLength;
+
+// cmdBuffer stores all the GPGGA string when received.
+uint8_t GPGGAbuffer[300] = { };
+uint8_t GPGGAbufferIndex = 0;
+char GPGGAmessage[300];
+uint8_t GPGGAmessageLength;
 
 /**
  * Send an AT command to SIM module, and log the command and response to UART.
@@ -186,47 +195,78 @@ void MQTT_GPS_Init(void) {
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	// Received a byte from SIM7600 module.
-	if (huart == &huart3) {
+	if (huart = &huart3) {
 
-		// Case 1: TODO: check if we are receiving GPGGA
+		// Check which string we are receiving
 		if (receivedByte == '$') {
-			dollarReceived = 1;
-			return;
+			receivingGPGGA = 1;
+
+		} else if (receivedByte == '{') {
+			receivingCmd = 1;
 		}
 
-		// Case 2: We received the full command message.
-		if (receivedByte == '}') {
-			cmdReceived = 1;
-			cmdBuffer[cmdBufferIndex++] = '\0';
+		// Case 2: We are receiving command.
+		if (receivingCmd == 1) {
 
-			// Get the start and and index of the message
-			// end index is the index of the last quote
-			uint8_t endIndex = cmdBufferIndex - 2;
-			uint8_t startIndex = endIndex - 1;
-			for (; startIndex > 0; startIndex--) {
-				// if character is not a quote, skip.
-				if (cmdBuffer[startIndex] != '"') {
-					continue;
+			// 2A: Command completed.
+			if (receivedByte == '}') {
+				cmdReceived = 1;
+				receivingCmd = 0;
+				cmdBuffer[cmdBufferIndex++] = '\0';
+
+				// Find the command string e.g. "forward", "backward", etc.
+				// Get the start and and index of the message
+				// end index is the index of the last quote
+				uint8_t endIndex = cmdBufferIndex - 2;
+				uint8_t startIndex = endIndex - 1;
+				for (; startIndex > 0; startIndex--) {
+					// if character is not a quote, skip.
+					if (cmdBuffer[startIndex] != '"') {
+						continue;
+					}
+					// startIndex now points to the first character.
+					startIndex += 1;
+					break;
 				}
-				// startIndex now points to the first character.
-				startIndex += 1;
-				break;
+
+				// Copy the message from buffer and store to cmdMessage.
+				cmdMessageLength = endIndex - startIndex;
+				if (cmdMessageLength > sizeof(cmdMessage) - 1) {
+					cmdMessageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
+				}
+
+				strncpy(cmdMessage, (char*) cmdBuffer + startIndex,
+						cmdMessageLength);
+				cmdMessage[cmdMessageLength] = '\n';
+				cmdMessage[cmdMessageLength + 1] = '\0';
+				cmdMessageLength++;
+
+			} else {
+				// 2B: Command not yet completed.
+				// append the byte to buffer
+				cmdBuffer[cmdBufferIndex++] = receivedByte;
 			}
 
-			// Copy the message from buffer and store to cmdMessage.
-			messageLength = endIndex - startIndex; // e.g 104 - 95. message length = 9
+			// Case 3: We are receiving GPGGA.
+		} else if (receivingGPGGA == 1) {
 
-			if (messageLength > sizeof(cmdMessage) - 1) {
-				messageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
+			if (receivedByte == '\n') {
+				// 3A: GPGGA string completed.
+				// Clear buffer and move it to message array.
+				GPGGAreceived = 1;
+				receivingGPGGA = 0;
+
+				GPGGAmessageLength = GPGGAbufferIndex;
+				strncpy(GPGGAmessage, (char*) GPGGAbuffer, GPGGAmessageLength);
+				GPGGAmessage[GPGGAmessageLength + 1] = '\0';
+
+			} else {
+				// 3B: not yet completed.
+				GPGGAbuffer[GPGGAbufferIndex++] = receivedByte;
 			}
-
-			strncpy(cmdMessage, (char*) cmdBuffer + startIndex, messageLength);
-			cmdMessage[messageLength] = '\0';
-
-		} else {
-			cmdBuffer[cmdBufferIndex++] = receivedByte;
-			HAL_UART_Receive_IT(&huart3, &receivedByte, 1); // Continue receiving next byte
 		}
+
+		HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
 	}
 }
 
@@ -302,10 +342,7 @@ int main(void) {
 			cmdReceived = 0;
 
 			// Log the response received by the SIM module.
-			cmdMessage[messageLength] = '\n';
-			cmdMessage[messageLength + 1] = '\0';
-			messageLength++;
-			HAL_UART_Transmit(&huart2, (uint8_t*) cmdMessage, messageLength,
+			HAL_UART_Transmit(&huart2, (uint8_t*) cmdMessage, cmdMessageLength,
 			HAL_MAX_DELAY);
 
 			if (strstr((char*) cmdMessage, "forward")) {
@@ -330,18 +367,18 @@ int main(void) {
 
 			// Ready to receive next command.
 			cmdBufferIndex = 0;
-			HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+			cmdMessageLength = 0;
 		}
 
-		// TODO:
-		// 2. Send string to MQTT
-		if (dollarReceived) {
-			HAL_UART_Transmit(&huart2, (uint8_t*) "GPGGA received\r\n",
-					strlen("GPGGA received\r\n"),
-					HAL_MAX_DELAY);
+		// 2. Send GPGGA string to MQTT
+		if (GPGGAreceived) {
+			GPGGAreceived = 0;
+			HAL_UART_Transmit(&huart2, (uint8_t*) GPGGAmessage, GPGGAmessageLength,
+			HAL_MAX_DELAY);
 
-			dollarReceived = 0;
-			HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+			// Ready to receive next command.
+			GPGGAbufferIndex = 0;
+			GPGGAmessageLength = 0;
 		}
 		/* USER CODE END WHILE */
 
