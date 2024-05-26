@@ -60,6 +60,10 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
+void MQTT_GPS_Init(void);
+void SIM_Transmit(const char *cmd);
+static void publishMessage(char *msg_sensor);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -119,6 +123,10 @@ void SIM_Transmit(const char *cmd) {
 	HAL_MAX_DELAY);
 }
 
+/**
+ * Initialize MQTT publisher and subscriber
+ * set to receive GPS info from SIM_7600.
+ */
 void MQTT_GPS_Init(void) {
 	// 0. Reset connection.
 	resIsOK = 0;
@@ -189,86 +197,27 @@ void MQTT_GPS_Init(void) {
 	SIM_Transmit("AT+CGPS=1\r\n");
 	// NMEA Output to AT port
 	SIM_Transmit("AT+CGPSINFOCFG=2,1\r\n");
-
 }
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+static void publishMessage(char *msg) {
 
-	// Received a byte from SIM7600 module.
-	if (huart = &huart3) {
+	// Tell SIM that we will be sending a a message under this topic.
+	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	SIM_Transmit(ATcommand);
+	sprintf(ATcommand, "%s\r\n", topic_sensor);
+	SIM_Transmit(ATcommand);
 
-		// Check which string we are receiving
-		if (receivedByte == '$') {
-			receivingGPGGA = 1;
+	// Define the payload.
+	char ATcommand[256];
+	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
+	SIM_Transmit(ATcommand);
+	SIM_Transmit(msg);
 
-		} else if (receivedByte == '{') {
-			receivingCmd = 1;
-		}
-
-		// Case 2: We are receiving command.
-		if (receivingCmd == 1) {
-
-			// 2A: Command completed.
-			if (receivedByte == '}') {
-				cmdReceived = 1;
-				receivingCmd = 0;
-				cmdBuffer[cmdBufferIndex++] = '\0';
-
-				// Find the command string e.g. "forward", "backward", etc.
-				// Get the start and and index of the message
-				// end index is the index of the last quote
-				uint8_t endIndex = cmdBufferIndex - 2;
-				uint8_t startIndex = endIndex - 1;
-				for (; startIndex > 0; startIndex--) {
-					// if character is not a quote, skip.
-					if (cmdBuffer[startIndex] != '"') {
-						continue;
-					}
-					// startIndex now points to the first character.
-					startIndex += 1;
-					break;
-				}
-
-				// Copy the message from buffer and store to cmdMessage.
-				cmdMessageLength = endIndex - startIndex;
-				if (cmdMessageLength > sizeof(cmdMessage) - 1) {
-					cmdMessageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
-				}
-
-				strncpy(cmdMessage, (char*) cmdBuffer + startIndex,
-						cmdMessageLength);
-				cmdMessage[cmdMessageLength] = '\n';
-				cmdMessage[cmdMessageLength + 1] = '\0';
-				cmdMessageLength++;
-
-			} else {
-				// 2B: Command not yet completed.
-				// append the byte to buffer
-				cmdBuffer[cmdBufferIndex++] = receivedByte;
-			}
-
-			// Case 3: We are receiving GPGGA.
-		} else if (receivingGPGGA == 1) {
-
-			if (receivedByte == '\n') {
-				// 3A: GPGGA string completed.
-				// Clear buffer and move it to message array.
-				GPGGAreceived = 1;
-				receivingGPGGA = 0;
-
-				GPGGAmessageLength = GPGGAbufferIndex;
-				strncpy(GPGGAmessage, (char*) GPGGAbuffer, GPGGAmessageLength);
-				GPGGAmessage[GPGGAmessageLength + 1] = '\0';
-
-			} else {
-				// 3B: not yet completed.
-				GPGGAbuffer[GPGGAbufferIndex++] = receivedByte;
-			}
-		}
-
-		HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
-	}
+	// Publish the message.
+	sprintf(ATcommand, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
+	SIM_Transmit(ATcommand);
 }
+
 
 /* USER CODE END 0 */
 
@@ -373,13 +322,19 @@ int main(void) {
 		// 2. Send GPGGA string to MQTT
 		if (GPGGAreceived) {
 			GPGGAreceived = 0;
-			HAL_UART_Transmit(&huart2, (uint8_t*) GPGGAmessage, GPGGAmessageLength,
-			HAL_MAX_DELAY);
 
-			// Ready to receive next command.
+		    // Create JSON message with GPGGA data
+			uint8_t jsonMsgLen = GPGGAmessageLength + strlen("{\"message\":\"\"}");
+			char jsonMsg[jsonMsgLen];
+			sprintf(jsonMsg, "{\"message\":\"%s\"}", GPGGAmessage);
+			HAL_UART_Transmit(&huart2, (uint8_t*) jsonMsg, jsonMsgLen, HAL_MAX_DELAY);
+
+			// Publish and ready to receive next command.
+		    publishMessage(jsonMsg);
 			GPGGAbufferIndex = 0;
 			GPGGAmessageLength = 0;
 		}
+
 		/* USER CODE END WHILE */
 
 		/* USER CODE BEGIN 3 */
@@ -690,28 +645,105 @@ static void MX_GPIO_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
-void publishMessage(void) {
 
-	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
-	SIM_Transmit(ATcommand);
-	sprintf(ATcommand, "%s\r\n", topic_sensor);
-	SIM_Transmit(ATcommand);
+/**
+ * Call back function everytime we receive a single byte in UART.
+ */
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
-	// Define the payload
-	const char *msg_sensor = "{\"message\":\"Hello from stm32\"}";
-	char ATcommand[256]; // Ensure this buffer is large enough for your commands
-	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg_sensor));
-	SIM_Transmit(ATcommand);
-	SIM_Transmit(msg_sensor);
+	// Received a byte from SIM7600 module.
+	if (huart == &huart3) {
 
-	// Publish the message
-	SIM_Transmit("AT+CMQTTPUB=0,1,60\r\n");
+		// Check which string we are receiving
+		if (receivedByte == '$') {
+			receivingGPGGA = 1;
+
+		} else if (receivedByte == '{') {
+			receivingCmd = 1;
+		}
+
+		// Case 2: We are receiving command.
+		if (receivingCmd == 1) {
+
+			// 2A: Command completed.
+			if (receivedByte == '}') {
+				cmdReceived = 1;
+				receivingCmd = 0;
+				cmdBuffer[cmdBufferIndex++] = '\0';
+
+				// Find the command string e.g. "forward", "backward", etc.
+				// Get the start and and index of the message
+				// end index is the index of the last quote
+				uint8_t endIndex = cmdBufferIndex - 2;
+				uint8_t startIndex = endIndex - 1;
+				for (; startIndex > 0; startIndex--) {
+					// if character is not a quote, skip.
+					if (cmdBuffer[startIndex] != '"') {
+						continue;
+					}
+					// startIndex now points to the first character.
+					startIndex += 1;
+					break;
+				}
+
+				// Copy the message from buffer and store to cmdMessage.
+				cmdMessageLength = endIndex - startIndex;
+				if (cmdMessageLength > sizeof(cmdMessage) - 1) {
+					cmdMessageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
+				}
+
+				strncpy(cmdMessage, (char*) cmdBuffer + startIndex,
+						cmdMessageLength);
+				cmdMessage[cmdMessageLength] = '\n';
+				cmdMessage[cmdMessageLength + 1] = '\0';
+				cmdMessageLength++;
+
+			} else {
+				// 2B: Command not yet completed.
+				// append the byte to buffer
+				cmdBuffer[cmdBufferIndex++] = receivedByte;
+			}
+
+			// Case 3: We are receiving GPGGA.
+		} else if (receivingGPGGA == 1) {
+
+			if (receivedByte == '\n') {
+				// 3A: GPGGA string completed.
+				// Clear buffer and move it to message array.
+				GPGGAreceived = 1;
+				receivingGPGGA = 0;
+
+				// Print the last char before we meet `\n`
+				char lastCharMsg[30];
+				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", GPGGAmessage[GPGGAbufferIndex - 1]);
+				HAL_UART_Transmit(&huart2, (uint8_t*) lastCharMsg, strlen(lastCharMsg), HAL_MAX_DELAY);
+
+
+				// Question: why do I need to do -1 to make it not have \n at the end of GPGGA string.
+				// This should say that the length is bufferIndex=11 not bufferIndex-1=10
+				// Buffer content: ['$', 'G', 'P', 'G', 'G', 'A', ',', ',', '1', '2', '3', '\n']
+				// Buffer indexes:   0    1    2    3    4    5    6    7    8    9   10    11
+				// 																			 *
+				//  																			we are now here.
+				// Copy buffer to the final message.
+				GPGGAmessageLength = GPGGAbufferIndex - 1;
+				strncpy(GPGGAmessage, (char*) GPGGAbuffer, GPGGAmessageLength);
+				GPGGAmessage[GPGGAmessageLength] = '\0';
+
+
+			} else {
+				// 3B: string not yet completed.
+				GPGGAbuffer[GPGGAbufferIndex++] = receivedByte;
+			}
+		}
+
+		HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+	}
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 	if (GPIO_Pin == B1_Pin) // Check if the interrupt comes from the button pin
 	{
-		publishMessage();
 	}
 }
 
