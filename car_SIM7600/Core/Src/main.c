@@ -323,10 +323,10 @@ int main(void) {
 		if (GPGGAreceived) {
 			GPGGAreceived = 0;
 
-		    // Create JSON message with GPGGA data
-			uint8_t jsonMsgLen = GPGGAmessageLength + strlen("{\"message\":\"\"}");
+			// Create JSON message with GPGGA data
+			uint8_t jsonMsgLen = GPGGAmessageLength + strlen("{\n\"message\":\"\"\n}");
 			char jsonMsg[jsonMsgLen];
-			sprintf(jsonMsg, "{\"message\":\"%s\"}", GPGGAmessage);
+			sprintf(jsonMsg, "{\n\"message\":\"%s\"\n}", GPGGAmessage);
 			HAL_UART_Transmit(&huart2, (uint8_t*) jsonMsg, jsonMsgLen, HAL_MAX_DELAY);
 
 			// Publish and ready to receive next command.
@@ -714,9 +714,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				receivingGPGGA = 0;
 
 				// Print the last char before we meet `\n`
-				char lastCharMsg[30];
-				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", GPGGAmessage[GPGGAbufferIndex - 1]);
-				HAL_UART_Transmit(&huart2, (uint8_t*) lastCharMsg, strlen(lastCharMsg), HAL_MAX_DELAY);
+//				char lastCharMsg[30];
+//				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", GPGGAmessage[GPGGAbufferIndex - 1]);
+//				HAL_UART_Transmit(&huart2, (uint8_t*) lastCharMsg, strlen(lastCharMsg), HAL_MAX_DELAY);
 
 
 				// Question: why do I need to do -1 to make it not have \n at the end of GPGGA string.
@@ -726,7 +726,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				// 																			 *
 				//  																			we are now here.
 				// Copy buffer to the final message.
-				GPGGAmessageLength = GPGGAbufferIndex - 1;
+				GPGGAmessageLength = GPGGAbufferIndex;
 				strncpy(GPGGAmessage, (char*) GPGGAbuffer, GPGGAmessageLength);
 				GPGGAmessage[GPGGAmessageLength] = '\0';
 
