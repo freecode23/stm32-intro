@@ -297,8 +297,6 @@ int main(void) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				// ARR is 49999
-				// Tim4 clock is 50Mhz
 				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 40000);
 			} else if (strstr((char*) cmdMessage, "backward")) {
 				// Front Left
