@@ -557,7 +557,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			// 2A: Command completed.
 			if (received_byte == '}') {
 
-				process_received_command();
+				extract_cmd();
 
 			} else {
 				// 2B: Command not yet completed.

@@ -139,7 +139,7 @@ void sim_mqtt_gps_init(void) {
 	sim_transmit("AT+CGPSINFOCFG=2,1\r\n");
 }
 
-void process_received_command(void) {
+void extract_cmd(void) {
 	cmd_received = 1;
 	receiving_cmd = 0;
 	cmd_buffer[cmd_buffer_index++] = '\0';

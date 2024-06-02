@@ -40,6 +40,6 @@ extern volatile uint8_t receiving_cmd;
 void sim_huart_init(UART_HandleTypeDef *p_huart_sim, UART_HandleTypeDef *p_huart_log);
 void sim_mqtt_gps_init(void);
 void sim_transmit(const char *cmd);
-void process_received_command(void);
+void extract_cmd(void);
 
 #endif // SIM7600_H
