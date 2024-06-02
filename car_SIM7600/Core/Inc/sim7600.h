@@ -46,6 +46,8 @@ extern volatile uint8_t receiving_gpgga;
 void sim_huart_init(UART_HandleTypeDef *p_huart_sim, UART_HandleTypeDef *p_huart_log);
 void sim_mqtt_gps_init(void);
 void sim_transmit(const char *cmd);
+void sim_publish_mqtt_msg(char *msg, uint8_t msg_length);
+
 void extract_cmd(void);
 void extract_gpgga(void);
 

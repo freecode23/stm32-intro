@@ -192,3 +192,27 @@ void extract_gpgga(void) {
 	gpgga_msg[gpgga_msg_len] = '\0';
 
 }
+
+void sim_publish_mqtt_msg(char *msg, uint8_t msg_length) {
+
+	// Create JSON message with GPGGA data
+	uint8_t json_msg_len = msg_length + strlen("{\n\"message\":\"\"\n}");
+	char json_msg[json_msg_len];
+	sprintf(json_msg, "{\n\"message\":\"%s\"\n}", msg);
+
+	// Tell SIM that we will be sending a a message under this topic.
+	sprintf(at_cmd, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	sim_transmit(at_cmd);
+	sprintf(at_cmd, "%s\r\n", topic_sensor);
+	sim_transmit(at_cmd);
+
+	// Define the payload.
+	char at_cmd[256];
+	sprintf(at_cmd, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
+	sim_transmit(at_cmd);
+	sim_transmit(msg);
+
+	// Publish the message.
+	sprintf(at_cmd, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
+	sim_transmit(at_cmd);
+}
