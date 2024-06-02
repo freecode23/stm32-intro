@@ -107,8 +107,6 @@ int main(void) {
 	// 1. MQTT and GPS setup.
 	sim_huart_init(&huart3, &huart2);
 	sim_mqtt_gps_init();
-	// Ready to receive command from AWS byte by byte.
-	HAL_UART_Receive_IT(&huart3, &received_byte, 1);
 
 	// 2. Timer4 PWM set up.
 	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
@@ -166,11 +164,11 @@ int main(void) {
 		// 2. Send GPGGA string to MQTT
 		if (gpgga_received) {
 			gpgga_received = 0;
-
 			// Publish and ready to receive next command.
 			sim_publish_mqtt_msg(gpgga_msg, gpgga_msg_len);
 			gpgga_buffer_index = 0;
 			gpgga_msg_len = 0;
+
 		}
 
 		/* USER CODE END WHILE */
@@ -499,38 +497,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	// Received a byte from SIM7600 module.
 	if (huart == &huart3) {
-
-		// Check which string we are receiving
-		if (received_byte == '$') {
-			receiving_gpgga = 1;
-
-		} else if (received_byte == '{') {
-			receiving_cmd = 1;
-		}
-
-		if (receiving_cmd == 1) {
-			// 2A: Command completed.
-			if (received_byte == '}') {
-
-				extract_cmd();
-
-			} else {
-				// 2B: Command not yet completed.
-				cmd_buffer[cmd_buffer_index++] = received_byte;
-			}
-
-		} else if (receiving_gpgga == 1) {
-			if (received_byte == '\n') {
-				// 3A: GPGGA string completed.
-				extract_gpgga();
-
-			} else {
-				// 3B: string not yet completed.
-				gpgga_buffer[gpgga_buffer_index++] = received_byte;
-			}
-		}
-
-		HAL_UART_Receive_IT(&huart3, &received_byte, 1);
+		sim_handle_byte(&huart3);
 	}
 }
 
