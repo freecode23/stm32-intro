@@ -47,8 +47,7 @@ UART_HandleTypeDef huart2;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-volatile uint8_t send_sms = 0;
-char ATcommand[256];
+char at_cmd[256];
 
 /* USER CODE END PV */
 
@@ -60,9 +59,9 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
-void MQTT_GPS_Init(void);
-void SIM_Transmit(const char *cmd);
-static void publishMessage(char *msg_sensor);
+void sim_mqtt_gps_init(void);
+void sim_transmit(const char *cmd);
+static void publish_msg(char *msg, uint8_t msg_length);
 
 /* USER CODE END PFP */
 
@@ -77,48 +76,48 @@ char *will_message = "SIMCom Connected!";
 const char topic_will[] = "topic/will";
 const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
-volatile uint8_t cmdReceived = 0;
-volatile uint8_t receivingCmd = 0;
-volatile uint8_t GPGGAreceived = 0;
-volatile uint8_t receivingGPGGA = 0;
+volatile uint8_t cmd_received = 0;
+volatile uint8_t receiving_cmd = 0;
+volatile uint8_t gpgga_received = 0;
+volatile uint8_t receiving_gpgga = 0;
 
-const uint32_t timeOut = 10000;
+const uint32_t timeout = 10000;
 
-// response_ATcmd is a buffer for all the responses received when we initialize MQTT.
-uint8_t response_ATcmd[2000] = { };
-uint8_t resIsOK = 0;
-uint32_t previousTick;
+// response_at_cmd is a buffer for all the responses received when we initialize MQTT.
+uint8_t response_at_cmd[2000] = { };
+uint8_t res_is_ok = 0;
+uint32_t prev_tick;
 
-// receivedByte is a single byte when command is published.
-uint8_t receivedByte;
+// received_byte is a single byte when command is published.
+uint8_t received_byte;
 
-// cmdBuffer stores all the command when it is received.
-uint8_t cmdBuffer[200] = { };
-uint8_t cmdBufferIndex = 0;
-char cmdMessage[100];
-uint8_t cmdMessageLength;
+// cmd_buffer stores all the command when it is received.
+uint8_t cmd_buffer[200] = { };
+uint8_t cmd_buffer_index = 0;
+char cmd_msg[100];
+uint8_t cmd_msg_len;
 
-// cmdBuffer stores all the GPGGA string when received.
-uint8_t GPGGAbuffer[300] = { };
-uint8_t GPGGAbufferIndex = 0;
-char GPGGAmessage[300];
-uint8_t GPGGAmessageLength;
+// cmd_buffer stores all the GPGGA string when received.
+uint8_t gpgga_buffer[300] = { };
+uint8_t gpgga_buffer_index = 0;
+char gpgga_msg[300];
+uint8_t gpgga_msg_len;
 
 /**
  * Send an AT command to SIM module, and log the command and response to UART.
  */
-void SIM_Transmit(const char *cmd) {
+void sim_transmit(const char *cmd) {
 
-	memset(response_ATcmd, 0, sizeof(response_ATcmd));
+	memset(response_at_cmd, 0, sizeof(response_at_cmd));
 
 	// Send the AT command to SIM7600
 	HAL_UART_Transmit(&huart3, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(&huart3, (uint8_t*) response_ATcmd, sizeof(response_ATcmd),
+	HAL_UART_Receive(&huart3, (uint8_t*) response_at_cmd, sizeof(response_at_cmd),
 			2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
-	sprintf(status_msg, "-->Command and res:\n%s\r\n", response_ATcmd);
+	sprintf(status_msg, "-->Command and res:\n%s\r\n", response_at_cmd);
 	HAL_UART_Transmit(&huart2, (uint8_t*) status_msg, strlen(status_msg),
 	HAL_MAX_DELAY);
 }
@@ -127,95 +126,101 @@ void SIM_Transmit(const char *cmd) {
  * Initialize MQTT publisher and subscriber
  * set to receive GPS info from SIM_7600.
  */
-void MQTT_GPS_Init(void) {
+void sim_mqtt_gps_init(void) {
 	// 0. Reset connection.
-	resIsOK = 0;
-	previousTick = HAL_GetTick();
-	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
-		SIM_Transmit("AT+CRESET\r\n");
-		if (strstr((char*) response_ATcmd, "SMS DONE")) {
-			resIsOK = 1;
+	res_is_ok = 0;
+	prev_tick = HAL_GetTick();
+	while (!res_is_ok && prev_tick + timeout > HAL_GetTick()) {
+		sim_transmit("AT+CRESET\r\n");
+		if (strstr((char*) response_at_cmd, "SMS DONE")) {
+			res_is_ok = 1;
 		}
 		HAL_Delay(1000);
 	}
 
 	// 1. Check for OK response for AT
-	resIsOK = 0;
-	previousTick = HAL_GetTick();
-	while (!resIsOK && previousTick + timeOut > HAL_GetTick()) {
-		SIM_Transmit("AT\r\n");
-		if (strstr((char*) response_ATcmd, "OK")) {
-			resIsOK = 1;
+	res_is_ok = 0;
+	prev_tick = HAL_GetTick();
+	while (!res_is_ok && prev_tick + timeout > HAL_GetTick()) {
+		sim_transmit("AT\r\n");
+		if (strstr((char*) response_at_cmd, "OK")) {
+			res_is_ok = 1;
 		}
 		HAL_Delay(1000);
 	}
 
 	// 2. Check the certificate list
-	SIM_Transmit("AT+CCERTLIST\r\n");
+	sim_transmit("AT+CCERTLIST\r\n");
 
 	// 3. Configure SSL with certificates.
-	SIM_Transmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
-	SIM_Transmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
-	SIM_Transmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
-	SIM_Transmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
-	SIM_Transmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
+	sim_transmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
+	sim_transmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
+	sim_transmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
+	sim_transmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
+	sim_transmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
 
 	// 4. Generate client and will topic
-	SIM_Transmit("AT+CMQTTSTART\r\n");
-	SIM_Transmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
-	SIM_Transmit("AT+CMQTTSSLCFG=0,0\r\n");
+	sim_transmit("AT+CMQTTSTART\r\n");
+	sim_transmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
+	sim_transmit("AT+CMQTTSSLCFG=0,0\r\n");
 
 	// 5. Set the Will Topic
-	sprintf(ATcommand, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
-	SIM_Transmit(ATcommand);
-	SIM_Transmit(topic_will);
+	sprintf(at_cmd, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
+	sim_transmit(at_cmd);
+	sim_transmit(topic_will);
 
 	// 6. Set the Will Message
-	sprintf(ATcommand, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
-	SIM_Transmit(ATcommand);
-	SIM_Transmit(will_message);
+	sprintf(at_cmd, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
+	sim_transmit(at_cmd);
+	sim_transmit(will_message);
 
 	// 7. Connect to aws.
-	sprintf(ATcommand, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
-	SIM_Transmit(ATcommand);
+	sprintf(at_cmd, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
+	sim_transmit(at_cmd);
 
 	// 8. Subscribe to "topic/cmd"
-	sprintf(ATcommand, "AT+CMQTTSUBTOPIC=0,%d,1\r\n", strlen(topic_cmd));
-	SIM_Transmit(ATcommand);
-	sprintf(ATcommand, "%s\r\n", topic_cmd);
-	SIM_Transmit(ATcommand);
-	SIM_Transmit("AT+CMQTTSUB=0\r\n");
+	sprintf(at_cmd, "AT+CMQTTSUBTOPIC=0,%d,1\r\n", strlen(topic_cmd));
+	sim_transmit(at_cmd);
+	sprintf(at_cmd, "%s\r\n", topic_cmd);
+	sim_transmit(at_cmd);
+	sim_transmit("AT+CMQTTSUB=0\r\n");
 
 	// 9. GPS
-	SIM_Transmit("AT+CGPS=0\r\n");
+	sim_transmit("AT+CGPS=0\r\n");
 	//Configure GNSS support mode
-	SIM_Transmit("AT+CGNSSMODE=15,1\r\n");
+	sim_transmit("AT+CGNSSMODE=15,1\r\n");
 	// Configure NMEA sentence type
-	SIM_Transmit("AT+CGPSNMEA=1\r\n");
+	sim_transmit("AT+CGPSNMEA=1\r\n");
 	// Set NMEA output rate to 10Hz
-	SIM_Transmit("AT+CGPSNMEARATE=1\r\n");
-	SIM_Transmit("AT+CGPS=1\r\n");
+	sim_transmit("AT+CGPSNMEARATE=1\r\n");
+	sim_transmit("AT+CGPS=1\r\n");
 	// NMEA Output to AT port
-	SIM_Transmit("AT+CGPSINFOCFG=2,1\r\n");
+	sim_transmit("AT+CGPSINFOCFG=2,1\r\n");
 }
 
-static void publishMessage(char *msg) {
+static void publish_msg(char *msg, uint8_t msg_length) {
+
+	// Create JSON message with GPGGA data
+	uint8_t json_msg_len = msg_length
+			+ strlen("{\n\"message\":\"\"\n}");
+	char json_msg[json_msg_len];
+	sprintf(json_msg, "{\n\"message\":\"%s\"\n}", msg);
 
 	// Tell SIM that we will be sending a a message under this topic.
-	sprintf(ATcommand, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
-	SIM_Transmit(ATcommand);
-	sprintf(ATcommand, "%s\r\n", topic_sensor);
-	SIM_Transmit(ATcommand);
+	sprintf(at_cmd, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	sim_transmit(at_cmd);
+	sprintf(at_cmd, "%s\r\n", topic_sensor);
+	sim_transmit(at_cmd);
 
 	// Define the payload.
-	char ATcommand[256];
-	sprintf(ATcommand, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
-	SIM_Transmit(ATcommand);
-	SIM_Transmit(msg);
+	char at_cmd[256];
+	sprintf(at_cmd, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
+	sim_transmit(at_cmd);
+	sim_transmit(msg);
 
 	// Publish the message.
-	sprintf(ATcommand, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
-	SIM_Transmit(ATcommand);
+	sprintf(at_cmd, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
+	sim_transmit(at_cmd);
 }
 
 /* USER CODE END 0 */
@@ -260,9 +265,9 @@ int main(void) {
 			HAL_MAX_DELAY);
 
 	// 1. MQTT and GPS setup.
-	MQTT_GPS_Init();
+	sim_mqtt_gps_init();
 	// Ready to receive command from AWS byte by byte.
-	HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+	HAL_UART_Receive_IT(&huart3, &received_byte, 1);
 
 	// 2. Timer4 PWM set up.
 	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
@@ -286,25 +291,27 @@ int main(void) {
 	while (1) {
 
 		// 1. Log command from SIM module
-		if (cmdReceived) {
-			cmdReceived = 0;
+		if (cmd_received) {
+			cmd_received = 0;
 
 			// Log the response received by the SIM module.
-			HAL_UART_Transmit(&huart2, (uint8_t*) cmdMessage, cmdMessageLength,
+			HAL_UART_Transmit(&huart2, (uint8_t*) cmd_msg, cmd_msg_len,
 			HAL_MAX_DELAY);
 
-			if (strstr((char*) cmdMessage, "forward")) {
-				// Front Left
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 40000);
-			} else if (strstr((char*) cmdMessage, "backward")) {
+			if (strstr((char*) cmd_msg, "forward")) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 1000);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 40000);
 
-			} else if (strstr((char*) cmdMessage, "stop")) {
+			} else if (strstr((char*) cmd_msg, "backward")) {
+				// Front Left
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 10000);
+
+
+			} else if (strstr((char*) cmd_msg, "stop")) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
@@ -313,26 +320,19 @@ int main(void) {
 			}
 
 			// Ready to receive next command.
-			cmdBufferIndex = 0;
-			cmdMessageLength = 0;
+			cmd_buffer_index = 0;
+			cmd_msg_len = 0;
 		}
 
 		// 2. Send GPGGA string to MQTT
-		if (GPGGAreceived) {
-			GPGGAreceived = 0;
+		if (gpgga_received) {
+			gpgga_received = 0;
 
-			// Create JSON message with GPGGA data
-			uint8_t jsonMsgLen = GPGGAmessageLength
-					+ strlen("{\n\"message\":\"\"\n}");
-			char jsonMsg[jsonMsgLen];
-			sprintf(jsonMsg, "{\n\"message\":\"%s\"\n}", GPGGAmessage);
-			HAL_UART_Transmit(&huart2, (uint8_t*) jsonMsg, jsonMsgLen,
-			HAL_MAX_DELAY);
 
 			// Publish and ready to receive next command.
-			publishMessage(jsonMsg);
-			GPGGAbufferIndex = 0;
-			GPGGAmessageLength = 0;
+			publish_msg(gpgga_msg, gpgga_msg_len);
+			gpgga_buffer_index = 0;
+			gpgga_msg_len = 0;
 		}
 
 		/* USER CODE END WHILE */
@@ -663,67 +663,67 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 	if (huart == &huart3) {
 
 		// Check which string we are receiving
-		if (receivedByte == '$') {
-			receivingGPGGA = 1;
+		if (received_byte == '$') {
+			receiving_gpgga = 1;
 
-		} else if (receivedByte == '{') {
-			receivingCmd = 1;
+		} else if (received_byte == '{') {
+			receiving_cmd = 1;
 		}
 
 		// Case 2: We are receiving command.
-		if (receivingCmd == 1) {
+		if (receiving_cmd == 1) {
 
 			// 2A: Command completed.
-			if (receivedByte == '}') {
-				cmdReceived = 1;
-				receivingCmd = 0;
-				cmdBuffer[cmdBufferIndex++] = '\0';
+			if (received_byte == '}') {
+				cmd_received = 1;
+				receiving_cmd = 0;
+				cmd_buffer[cmd_buffer_index++] = '\0';
 
 				// Find the command string e.g. "forward", "backward", etc.
 				// Get the start and and index of the message
 				// end index is the index of the last quote
-				uint8_t endIndex = cmdBufferIndex - 2;
-				uint8_t startIndex = endIndex - 1;
-				for (; startIndex > 0; startIndex--) {
+				uint8_t end_i = cmd_buffer_index - 2;
+				uint8_t start_i = end_i - 1;
+				for (; start_i > 0; start_i--) {
 					// if character is not a quote, skip.
-					if (cmdBuffer[startIndex] != '"') {
+					if (cmd_buffer[start_i] != '"') {
 						continue;
 					}
-					// startIndex now points to the first character.
-					startIndex += 1;
+					// start_i now points to the first character.
+					start_i += 1;
 					break;
 				}
 
-				// Copy the message from buffer and store to cmdMessage.
-				cmdMessageLength = endIndex - startIndex;
-				if (cmdMessageLength > sizeof(cmdMessage) - 1) {
-					cmdMessageLength = sizeof(cmdMessage) - 1; // Prevent buffer overflow
+				// Copy the message from buffer and store to cmd_msg.
+				cmd_msg_len = end_i - start_i;
+				if (cmd_msg_len > sizeof(cmd_msg) - 1) {
+					cmd_msg_len = sizeof(cmd_msg) - 1; // Prevent buffer overflow
 				}
 
-				strncpy(cmdMessage, (char*) cmdBuffer + startIndex,
-						cmdMessageLength);
-				cmdMessage[cmdMessageLength] = '\n';
-				cmdMessage[cmdMessageLength + 1] = '\0';
-				cmdMessageLength++;
+				strncpy(cmd_msg, (char*) cmd_buffer + start_i,
+						cmd_msg_len);
+				cmd_msg[cmd_msg_len] = '\n';
+				cmd_msg[cmd_msg_len + 1] = '\0';
+				cmd_msg_len++;
 
 			} else {
 				// 2B: Command not yet completed.
 				// append the byte to buffer
-				cmdBuffer[cmdBufferIndex++] = receivedByte;
+				cmd_buffer[cmd_buffer_index++] = received_byte;
 			}
 
 			// Case 3: We are receiving GPGGA.
-		} else if (receivingGPGGA == 1) {
+		} else if (receiving_gpgga == 1) {
 
-			if (receivedByte == '\n') {
+			if (received_byte == '\n') {
 				// 3A: GPGGA string completed.
 				// Clear buffer and move it to message array.
-				GPGGAreceived = 1;
-				receivingGPGGA = 0;
+				gpgga_received = 1;
+				receiving_gpgga = 0;
 
 				// Print the last char before we meet `\n`
 //				char lastCharMsg[30];
-//				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", GPGGAmessage[GPGGAbufferIndex - 1]);
+//				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", gpgga_msg[gpgga_buffer_index - 1]);
 //				HAL_UART_Transmit(&huart2, (uint8_t*) lastCharMsg, strlen(lastCharMsg), HAL_MAX_DELAY);
 
 				// Question: why do I need to do -1 to make it not have \n at the end of GPGGA string.
@@ -733,17 +733,17 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				// 																			 *
 				//  																			we are now here.
 				// Copy buffer to the final message.
-				GPGGAmessageLength = GPGGAbufferIndex;
-				strncpy(GPGGAmessage, (char*) GPGGAbuffer, GPGGAmessageLength);
-				GPGGAmessage[GPGGAmessageLength] = '\0';
+				gpgga_msg_len = gpgga_buffer_index;
+				strncpy(gpgga_msg, (char*) gpgga_buffer, gpgga_msg_len);
+				gpgga_msg[gpgga_msg_len] = '\0';
 
 			} else {
 				// 3B: string not yet completed.
-				GPGGAbuffer[GPGGAbufferIndex++] = receivedByte;
+				gpgga_buffer[gpgga_buffer_index++] = received_byte;
 			}
 		}
 
-		HAL_UART_Receive_IT(&huart3, &receivedByte, 1);
+		HAL_UART_Receive_IT(&huart3, &received_byte, 1);
 	}
 }
 
