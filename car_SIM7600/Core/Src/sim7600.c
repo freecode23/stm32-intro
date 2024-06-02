@@ -1,4 +1,3 @@
-
 /*
  * sim7600.c
  *
@@ -25,14 +24,24 @@ uint8_t res_is_ok = 0;
 uint32_t prev_tick;
 const uint32_t timeout = 10000;
 
+uint8_t received_byte;
+uint8_t cmd_buffer[200] = { };
+uint8_t cmd_buffer_index = 0;
+char cmd_msg[100];
+uint8_t cmd_msg_len;
+volatile uint8_t cmd_received = 0;
+volatile uint8_t receiving_cmd = 0;
 
 static UART_HandleTypeDef *huart_sim;
 static UART_HandleTypeDef *huart_log;
 
-
-void sim_huart_init(UART_HandleTypeDef *p_huart_sim, UART_HandleTypeDef *p_huart_log) {
-    huart_sim = p_huart_sim;
-    huart_log = p_huart_log;
+/**
+ * Enable the stm32 to send message to sim module and to log the command or sensor messages to UART.
+ */
+void sim_huart_init(UART_HandleTypeDef *p_huart_sim,
+		UART_HandleTypeDef *p_huart_log) {
+	huart_sim = p_huart_sim;
+	huart_log = p_huart_log;
 }
 
 /**
@@ -44,8 +53,8 @@ void sim_transmit(const char *cmd) {
 
 	// Send the AT command to SIM7600
 	HAL_UART_Transmit(huart_sim, (uint8_t*) cmd, strlen(cmd), 2000);
-	HAL_UART_Receive(huart_sim, (uint8_t*) response_at_cmd, sizeof(response_at_cmd),
-			2000);
+	HAL_UART_Receive(huart_sim, (uint8_t*) response_at_cmd,
+			sizeof(response_at_cmd), 2000);
 
 	// Log the response received by the SIM module.
 	char status_msg[3000];
@@ -128,4 +137,37 @@ void sim_mqtt_gps_init(void) {
 	sim_transmit("AT+CGPS=1\r\n");
 	// NMEA Output to AT port
 	sim_transmit("AT+CGPSINFOCFG=2,1\r\n");
+}
+
+void process_received_command(void) {
+	cmd_received = 1;
+	receiving_cmd = 0;
+	cmd_buffer[cmd_buffer_index++] = '\0';
+
+	// Find the command string e.g. "forward", "backward", etc.
+	// Get the start and and index of the message
+	// end index is the index of the last quote
+	uint8_t end_i = cmd_buffer_index - 2;
+	uint8_t start_i = end_i - 1;
+	for (; start_i > 0; start_i--) {
+		// if character is not a quote, skip.
+		if (cmd_buffer[start_i] != '"') {
+			continue;
+		}
+		// start_i now points to the first character.
+		start_i += 1;
+		break;
+	}
+
+	// Copy the message from buffer and store to cmd_msg.
+	cmd_msg_len = end_i - start_i;
+	if (cmd_msg_len > sizeof(cmd_msg) - 1) {
+		cmd_msg_len = sizeof(cmd_msg) - 1; // Prevent buffer overflow
+	}
+
+	strncpy(cmd_msg, (char*) cmd_buffer + start_i, cmd_msg_len);
+	cmd_msg[cmd_msg_len] = '\n';
+	cmd_msg[cmd_msg_len + 1] = '\0';
+	cmd_msg_len++;
+
 }

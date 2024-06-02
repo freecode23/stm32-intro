@@ -66,16 +66,7 @@ static void MX_TIM4_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-// received_byte is a single byte when command is published.
-uint8_t received_byte;
 
-// cmd_buffer stores all the command when it is received.
-uint8_t cmd_buffer[200] = { };
-uint8_t cmd_buffer_index = 0;
-char cmd_msg[100];
-uint8_t cmd_msg_len;
-volatile uint8_t cmd_received = 0;
-volatile uint8_t receiving_cmd = 0;
 
 // cmd_buffer stores all the GPGGA string when received.
 uint8_t gpgga_buffer[300] = { };
@@ -565,36 +556,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 			// 2A: Command completed.
 			if (received_byte == '}') {
-				cmd_received = 1;
-				receiving_cmd = 0;
-				cmd_buffer[cmd_buffer_index++] = '\0';
 
-				// Find the command string e.g. "forward", "backward", etc.
-				// Get the start and and index of the message
-				// end index is the index of the last quote
-				uint8_t end_i = cmd_buffer_index - 2;
-				uint8_t start_i = end_i - 1;
-				for (; start_i > 0; start_i--) {
-					// if character is not a quote, skip.
-					if (cmd_buffer[start_i] != '"') {
-						continue;
-					}
-					// start_i now points to the first character.
-					start_i += 1;
-					break;
-				}
-
-				// Copy the message from buffer and store to cmd_msg.
-				cmd_msg_len = end_i - start_i;
-				if (cmd_msg_len > sizeof(cmd_msg) - 1) {
-					cmd_msg_len = sizeof(cmd_msg) - 1; // Prevent buffer overflow
-				}
-
-				strncpy(cmd_msg, (char*) cmd_buffer + start_i,
-						cmd_msg_len);
-				cmd_msg[cmd_msg_len] = '\n';
-				cmd_msg[cmd_msg_len + 1] = '\0';
-				cmd_msg_len++;
+				process_received_command();
 
 			} else {
 				// 2B: Command not yet completed.
@@ -609,19 +572,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 				// 3A: GPGGA string completed.
 				// Clear buffer and move it to message array.
 				gpgga_received = 1;
-				receiving_gpgga = 0;
+				receiving_gpgga =
 
-				// Print the last char before we meet `\n`
-//				char lastCharMsg[30];
-//				snprintf(lastCharMsg, sizeof(lastCharMsg), "lastChar=%cEND\n", gpgga_msg[gpgga_buffer_index - 1]);
-//				HAL_UART_Transmit(&huart2, (uint8_t*) lastCharMsg, strlen(lastCharMsg), HAL_MAX_DELAY);
-
-				// Question: why do I need to do -1 to make it not have \n at the end of GPGGA string.
-				// This should say that the length is bufferIndex=11 not bufferIndex-1=10
-				// Buffer content: ['$', 'G', 'P', 'G', 'G', 'A', ',', ',', '1', '2', '3', '\n']
-				// Buffer indexes:   0    1    2    3    4    5    6    7    8    9   10    11
-				// 																			 *
-				//  																			we are now here.
 				// Copy buffer to the final message.
 				gpgga_msg_len = gpgga_buffer_index;
 				strncpy(gpgga_msg, (char*) gpgga_buffer, gpgga_msg_len);
