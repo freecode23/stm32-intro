@@ -49,7 +49,6 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -60,29 +59,15 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM4_Init(void);
 /* USER CODE BEGIN PFP */
 
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 
-
-
-// cmd_buffer stores all the GPGGA string when received.
-uint8_t gpgga_buffer[300] = { };
-uint8_t gpgga_buffer_index = 0;
-char gpgga_msg[300];
-uint8_t gpgga_msg_len;
-volatile uint8_t gpgga_received = 0;
-volatile uint8_t receiving_gpgga = 0;
-
-
-
 static void publish_msg(char *msg, uint8_t msg_length) {
 
 	// Create JSON message with GPGGA data
-	uint8_t json_msg_len = msg_length
-			+ strlen("{\n\"message\":\"\"\n}");
+	uint8_t json_msg_len = msg_length + strlen("{\n\"message\":\"\"\n}");
 	char json_msg[json_msg_len];
 	sprintf(json_msg, "{\n\"message\":\"%s\"\n}", msg);
 
@@ -191,7 +176,6 @@ int main(void) {
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
 				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 10000);
 
-
 			} else if (strstr((char*) cmd_msg, "stop")) {
 				// Front Left
 				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
@@ -208,7 +192,6 @@ int main(void) {
 		// 2. Send GPGGA string to MQTT
 		if (gpgga_received) {
 			gpgga_received = 0;
-
 
 			// Publish and ready to receive next command.
 			publish_msg(gpgga_msg, gpgga_msg_len);
@@ -551,9 +534,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 			receiving_cmd = 1;
 		}
 
-		// Case 2: We are receiving command.
 		if (receiving_cmd == 1) {
-
 			// 2A: Command completed.
 			if (received_byte == '}') {
 
@@ -561,23 +542,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 			} else {
 				// 2B: Command not yet completed.
-				// append the byte to buffer
 				cmd_buffer[cmd_buffer_index++] = received_byte;
 			}
 
-			// Case 3: We are receiving GPGGA.
 		} else if (receiving_gpgga == 1) {
-
 			if (received_byte == '\n') {
 				// 3A: GPGGA string completed.
-				// Clear buffer and move it to message array.
-				gpgga_received = 1;
-				receiving_gpgga =
-
-				// Copy buffer to the final message.
-				gpgga_msg_len = gpgga_buffer_index;
-				strncpy(gpgga_msg, (char*) gpgga_buffer, gpgga_msg_len);
-				gpgga_msg[gpgga_msg_len] = '\0';
+				extract_gpgga();
 
 			} else {
 				// 3B: string not yet completed.

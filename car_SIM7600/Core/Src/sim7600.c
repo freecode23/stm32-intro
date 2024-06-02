@@ -32,6 +32,14 @@ uint8_t cmd_msg_len;
 volatile uint8_t cmd_received = 0;
 volatile uint8_t receiving_cmd = 0;
 
+// cmd_buffer stores all the GPGGA string when received.
+uint8_t gpgga_buffer[300] = { };
+uint8_t gpgga_buffer_index = 0;
+char gpgga_msg[300];
+uint8_t gpgga_msg_len;
+volatile uint8_t gpgga_received = 0;
+volatile uint8_t receiving_gpgga = 0;
+
 static UART_HandleTypeDef *huart_sim;
 static UART_HandleTypeDef *huart_log;
 
@@ -169,5 +177,18 @@ void extract_cmd(void) {
 	cmd_msg[cmd_msg_len] = '\n';
 	cmd_msg[cmd_msg_len + 1] = '\0';
 	cmd_msg_len++;
+
+}
+
+void extract_gpgga(void) {
+
+	// Clear buffer and move it to message array.
+	gpgga_received = 1;
+	receiving_gpgga = 0;
+
+	// Copy buffer to the final message.
+	gpgga_msg_len = gpgga_buffer_index;
+	strncpy(gpgga_msg, (char*) gpgga_buffer, gpgga_msg_len);
+	gpgga_msg[gpgga_msg_len] = '\0';
 
 }

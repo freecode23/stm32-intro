@@ -35,11 +35,18 @@ extern uint8_t cmd_msg_len;
 extern volatile uint8_t cmd_received;
 extern volatile uint8_t receiving_cmd;
 
+extern uint8_t gpgga_buffer[];
+extern uint8_t gpgga_buffer_index;
+extern char gpgga_msg[];
+extern uint8_t gpgga_msg_len;
+extern volatile uint8_t gpgga_received;
+extern volatile uint8_t receiving_gpgga;
 
 
 void sim_huart_init(UART_HandleTypeDef *p_huart_sim, UART_HandleTypeDef *p_huart_log);
 void sim_mqtt_gps_init(void);
 void sim_transmit(const char *cmd);
 void extract_cmd(void);
+void extract_gpgga(void);
 
 #endif // SIM7600_H
