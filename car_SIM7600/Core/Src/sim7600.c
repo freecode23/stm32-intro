@@ -18,21 +18,19 @@ const char topic_will[] = "topic/will";
 const char topic_cmd[] = "topic/cmd";
 const char topic_sensor[] = "topic/sensor";
 
-char at_cmd[256];
-uint8_t response_at_cmd[2000] = { };
-uint8_t res_is_ok = 0;
-uint32_t prev_tick;
+// Variables needed for initializing the SIM module and connect to MQTT.
 const uint32_t timeout = 10000;
 
+// Variables needed to receive command.
 uint8_t received_byte;
-uint8_t cmd_buffer[200] = { };
+uint8_t cmd_buffer[200] = { }; // cmd_buffer stores all the command when it is received.
 uint8_t cmd_buffer_index = 0;
 char cmd_msg[100];
 uint8_t cmd_msg_len;
 volatile uint8_t cmd_received = 0;
 volatile uint8_t receiving_cmd = 0;
 
-// cmd_buffer stores all the GPGGA string when received.
+// Variables needed to receive gpgga.
 uint8_t gpgga_buffer[300] = { };
 uint8_t gpgga_buffer_index = 0;
 char gpgga_msg[300];
@@ -42,20 +40,25 @@ volatile uint8_t receiving_gpgga = 0;
 
 static UART_HandleTypeDef *huart_sim;
 static UART_HandleTypeDef *huart_log;
+static TIM_HandleTypeDef *pwm_timer;
+uint32_t tim_channel;
 
 // Private methods
-static void sim_transmit(const char *cmd);
+static void send_AT_cmd(const char *cmd);
+static void publish_mqtt_msg(char *msg, uint8_t msg_length);
 static void extract_cmd(void);
 static void extract_gpgga(void);
-
 
 /**
  * Enable the stm32 to send message to sim module and to log the command or sensor messages to UART.
  */
 void sim_huart_init(UART_HandleTypeDef *p_huart_sim,
-		UART_HandleTypeDef *p_huart_log) {
+		UART_HandleTypeDef *p_huart_log, TIM_HandleTypeDef *p_pwm_timer,
+		uint32_t p_tim_channel) {
 	huart_sim = p_huart_sim;
 	huart_log = p_huart_log;
+	pwm_timer = p_pwm_timer;
+	tim_channel = p_tim_channel;
 }
 
 /**
@@ -63,150 +66,165 @@ void sim_huart_init(UART_HandleTypeDef *p_huart_sim,
  * set to receive GPS info from SIM_7600.
  */
 void sim_mqtt_gps_init(void) {
+
+	uint8_t response_at_ok = 0;
+	uint32_t prev_tick = HAL_GetTick();
+	uint8_t response_at_cmd[2000] = { };
+
 	// 0. Reset connection.
-	res_is_ok = 0;
-	prev_tick = HAL_GetTick();
-	while (!res_is_ok && prev_tick + timeout > HAL_GetTick()) {
-		sim_transmit("AT+CRESET\r\n");
+	while (!response_at_ok && prev_tick + timeout > HAL_GetTick()) {
+		send_AT_cmd("AT+CRESET\r\n");
 		if (strstr((char*) response_at_cmd, "SMS DONE")) {
-			res_is_ok = 1;
+			response_at_ok = 1;
 		}
 		HAL_Delay(1000);
 	}
 
 	// 1. Check for OK response for AT
-	res_is_ok = 0;
+	response_at_ok = 0;
 	prev_tick = HAL_GetTick();
-	while (!res_is_ok && prev_tick + timeout > HAL_GetTick()) {
-		sim_transmit("AT\r\n");
+	while (!response_at_ok && prev_tick + timeout > HAL_GetTick()) {
+		send_AT_cmd("AT\r\n");
 		if (strstr((char*) response_at_cmd, "OK")) {
-			res_is_ok = 1;
+			response_at_ok = 1;
 		}
 		HAL_Delay(1000);
 	}
 
 	// 2. Check the certificate list
-	sim_transmit("AT+CCERTLIST\r\n");
+	send_AT_cmd("AT+CCERTLIST\r\n");
 
 	// 3. Configure SSL with certificates.
-	sim_transmit("AT+CSSLCFG=\"sslversion\",0,4\r\n");
-	sim_transmit("AT+CSSLCFG=\"authmode\",0,2\r\n");
-	sim_transmit("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
-	sim_transmit("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
-	sim_transmit("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
+	send_AT_cmd("AT+CSSLCFG=\"sslversion\",0,4\r\n");
+	send_AT_cmd("AT+CSSLCFG=\"authmode\",0,2\r\n");
+	send_AT_cmd("AT+CSSLCFG=\"cacert\",0,\"aws1_ca.pem\"\r\n");
+	send_AT_cmd("AT+CSSLCFG=\"clientcert\",0,\"aws1_cert.pem\"\r\n");
+	send_AT_cmd("AT+CSSLCFG=\"clientkey\",0,\"aws1_private.pem\"\r\n");
 
 	// 4. Generate client and will topic
-	sim_transmit("AT+CMQTTSTART\r\n");
-	sim_transmit("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
-	sim_transmit("AT+CMQTTSSLCFG=0,0\r\n");
+	send_AT_cmd("AT+CMQTTSTART\r\n");
+	send_AT_cmd("AT+CMQTTACCQ=0,\"SIMCom_client01\",1\r\n");
+	send_AT_cmd("AT+CMQTTSSLCFG=0,0\r\n");
 
 	// 5. Set the Will Topic
+	char at_cmd[256];
 	sprintf(at_cmd, "AT+CMQTTWILLTOPIC=0,%d\r\n", strlen(topic_will));
-	sim_transmit(at_cmd);
-	sim_transmit(topic_will);
+	send_AT_cmd(at_cmd);
+	send_AT_cmd(topic_will);
 
 	// 6. Set the Will Message
 	sprintf(at_cmd, "AT+CMQTTWILLMSG=0,%d,1\r\n", strlen(will_message));
-	sim_transmit(at_cmd);
-	sim_transmit(will_message);
+	send_AT_cmd(at_cmd);
+	send_AT_cmd(will_message);
 
 	// 7. Connect to aws.
 	sprintf(at_cmd, "AT+CMQTTCONNECT=0,\"%s:%d\",60,1\r\n", host, port);
-	sim_transmit(at_cmd);
+	send_AT_cmd(at_cmd);
 
 	// 8. Subscribe to "topic/cmd"
 	sprintf(at_cmd, "AT+CMQTTSUBTOPIC=0,%d,1\r\n", strlen(topic_cmd));
-	sim_transmit(at_cmd);
+	send_AT_cmd(at_cmd);
 	sprintf(at_cmd, "%s\r\n", topic_cmd);
-	sim_transmit(at_cmd);
-	sim_transmit("AT+CMQTTSUB=0\r\n");
+	send_AT_cmd(at_cmd);
+	send_AT_cmd("AT+CMQTTSUB=0\r\n");
 
 	// 9. GPS
-	sim_transmit("AT+CGPS=0\r\n");
+	send_AT_cmd("AT+CGPS=0\r\n");
+
 	//Configure GNSS support mode
-	sim_transmit("AT+CGNSSMODE=15,1\r\n");
+	send_AT_cmd("AT+CGNSSMODE=15,1\r\n");
+
 	// Configure NMEA sentence type
-	sim_transmit("AT+CGPSNMEA=1\r\n");
+	send_AT_cmd("AT+CGPSNMEA=1\r\n");
+
 	// Set NMEA output rate to 10Hz
-	sim_transmit("AT+CGPSNMEARATE=1\r\n");
-	sim_transmit("AT+CGPS=1\r\n");
+	send_AT_cmd("AT+CGPSNMEARATE=1\r\n");
+	send_AT_cmd("AT+CGPS=1\r\n");
+
 	// NMEA Output to AT port
-	sim_transmit("AT+CGPSINFOCFG=2,1\r\n");
+	send_AT_cmd("AT+CGPSINFOCFG=2,1\r\n");
 
-
-	// Ready to receive command from AWS byte by byte.
+	// 10. Ready to receive command from AWS byte by byte.
 	HAL_UART_Receive_IT(huart_sim, &received_byte, 1);
 }
-
-
-/**
- * Publish message to mqtt topic.
- * The topuc is currently default to topic/sensor.
- */
-void sim_publish_mqtt_msg(char *msg, uint8_t msg_length) {
-
-	// Create JSON message with GPGGA data
-	uint8_t json_msg_len = msg_length + strlen("{\n\"message\":\"\"\n}");
-	char json_msg[json_msg_len];
-	sprintf(json_msg, "{\n\"message\":\"%s\"\n}", msg);
-
-	// Tell SIM that we will be sending a a message under this topic.
-	sprintf(at_cmd, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
-	sim_transmit(at_cmd);
-	sprintf(at_cmd, "%s\r\n", topic_sensor);
-	sim_transmit(at_cmd);
-
-	// Define the payload.
-	char at_cmd[256];
-	sprintf(at_cmd, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
-	sim_transmit(at_cmd);
-	sim_transmit(msg);
-
-	// Publish the message.
-	sprintf(at_cmd, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
-	sim_transmit(at_cmd);
-}
-
 
 /**
  * sim_handle_byte will decide what to do to a byte received from the sim module.
  * the byte can either belong to a gpgga string or a command.
  */
-void sim_handle_byte(UART_HandleTypeDef *huart) {
+void sim_handle_byte() {
 
-	if (huart == huart_sim) {
+	// Check if we are just starting to receive gpgga or a command.
+	if (received_byte == '$') {
+		receiving_gpgga = 1;
 
-		// Check if we are starting to receive gpgga or a command.
-		if (received_byte == '$') {
-			receiving_gpgga = 1;
+	} else if (received_byte == '{') {
+		receiving_cmd = 1;
+	}
 
-		} else if (received_byte == '{') {
-			receiving_cmd = 1;
+	if (receiving_cmd == 1) {
+		if (received_byte == '}') {
+			// Command completed.
+			cmd_received = 1;
+			receiving_cmd = 0;
+			extract_cmd();
+		} else {
+			// Command not yet completed.
+			cmd_buffer[cmd_buffer_index++] = received_byte;
 		}
 
-		if (receiving_cmd == 1) {
+	} else if (receiving_gpgga == 1) {
+		if (received_byte == '\n') {
+			// GPGGA string completed.
+			gpgga_received = 1;
+			receiving_gpgga = 0;
+			extract_gpgga();
+		} else {
+			// string not yet completed.
+			gpgga_buffer[gpgga_buffer_index++] = received_byte;
+		}
+	}
+	HAL_UART_Receive_IT(huart_sim, &received_byte, 1);
+}
 
-			if (received_byte == '}') {
-				// 2A: Command completed.
-				extract_cmd();
-			} else {
-				// 2B: Command not yet completed.
-				cmd_buffer[cmd_buffer_index++] =
-						received_byte;
-			}
-		} else if (receiving_gpgga == 1) {
+/**
+ * Process the data after all bytes have been received.
+ */
+void sim_process_received_data(void) {
 
-			if (received_byte == '\n') {
-				// 3A: GPGGA string completed.
-				extract_gpgga();
-			} else {
-				// 3B: string not yet completed.
-				gpgga_buffer[gpgga_buffer_index++] =
-						received_byte;
-			}
+	// 1. Run motor command.
+	if (cmd_received) {
+		cmd_received = 0;
+		HAL_UART_Transmit(huart_log, (uint8_t*) cmd_msg, cmd_msg_len,
+		HAL_MAX_DELAY);
+
+		if (strstr((char*) cmd_msg, "forward")) {
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
+			__HAL_TIM_SET_COMPARE(pwm_timer, tim_channel, 40000);
+
+		} else if (strstr((char*) cmd_msg, "backward")) {
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+			__HAL_TIM_SET_COMPARE(pwm_timer, tim_channel, 10000);
+
+		} else if (strstr((char*) cmd_msg, "stop")) {
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
+			HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
+			__HAL_TIM_SET_COMPARE(pwm_timer, tim_channel, 0);
+
 		}
 
-		HAL_UART_Receive_IT(huart_sim, &received_byte, 1);
+		cmd_buffer_index = 0;
+		cmd_msg_len = 0;
+	}
+
+	// 2. Publish GPGGA message to MQTT.
+	if (gpgga_received) {
+		gpgga_received = 0;
+		publish_mqtt_msg(gpgga_msg, gpgga_msg_len);
+		gpgga_buffer_index = 0;
+		gpgga_msg_len = 0;
 	}
 }
 
@@ -214,12 +232,12 @@ void sim_handle_byte(UART_HandleTypeDef *huart) {
 /**
  * Send an AT command to SIM module, and log the command and response to UART.
  */
-static void sim_transmit(const char *cmd) {
+static void send_AT_cmd(const char *cmd) {
 
-	memset(response_at_cmd, 0, sizeof(response_at_cmd));
-
-	// Send the AT command to SIM7600
+	// Send the AT command to SIM7600.
 	HAL_UART_Transmit(huart_sim, (uint8_t*) cmd, strlen(cmd), 2000);
+
+	uint8_t response_at_cmd[2000] = { };
 	HAL_UART_Receive(huart_sim, (uint8_t*) response_at_cmd,
 			sizeof(response_at_cmd), 2000);
 
@@ -231,9 +249,41 @@ static void sim_transmit(const char *cmd) {
 }
 
 
+/**
+ * Publish message to mqtt topic.
+ * The topic is currently default to topic/sensor.
+ */
+static void publish_mqtt_msg(char *msg, uint8_t msg_length) {
+
+	// Create JSON message with GPGGA data
+	uint8_t json_msg_len = msg_length + strlen("{\n\"message\":\"\"\n}");
+	char json_msg[json_msg_len];
+	sprintf(json_msg, "{\n\"message\":\"%s\"\n}", msg);
+
+	// Tell SIM that we will be sending a a message under this topic.
+	char at_cmd[256];
+	sprintf(at_cmd, "AT+CMQTTTOPIC=0,%d\r\n", strlen(topic_sensor));
+	send_AT_cmd(at_cmd);
+	sprintf(at_cmd, "%s\r\n", topic_sensor);
+	send_AT_cmd(at_cmd);
+
+	// Define the payload.
+	sprintf(at_cmd, "AT+CMQTTPAYLOAD=0,%d\r\n", strlen(msg));
+	send_AT_cmd(at_cmd);
+	send_AT_cmd(msg);
+
+	// Publish the message.
+	sprintf(at_cmd, "AT+CMQTTPUB=0,1,%d\r\n", strlen(msg));
+	send_AT_cmd(at_cmd);
+}
+
+
+
+/**
+ * Extract only the relevant string from all the command bytes received.
+ */
 static void extract_cmd(void) {
-	cmd_received = 1;
-	receiving_cmd = 0;
+
 	cmd_buffer[cmd_buffer_index++] = '\0';
 
 	// Find the command string e.g. "forward", "backward", etc.
@@ -264,13 +314,10 @@ static void extract_cmd(void) {
 
 }
 
-
-
+/**
+ * Extract only the relevant string from all the gpgga bytes received.
+ */
 static void extract_gpgga(void) {
-
-	// Clear buffer and move it to message array.
-	gpgga_received = 1;
-	receiving_gpgga = 0;
 
 	// Copy buffer to the final message.
 	gpgga_msg_len = gpgga_buffer_index;

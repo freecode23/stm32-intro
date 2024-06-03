@@ -7,47 +7,53 @@
 #include <string.h>
 #include <stdio.h>
 
+
 // Define constants and variables
-extern const char apn[];
-extern const char host[];
-extern const int port;
-extern char *will_message;
-extern const char topic_will[];
-extern const char topic_cmd[];
-extern const char topic_sensor[];
-
-// received_byte is a single byte we received from SIM module.
-// This can be either a command or a GPGGA strings.
-extern uint8_t received_byte;
-
-// Variables needed for initializing the SIM module and connect to MQTT.
-extern char at_cmd[];
-extern uint8_t response_at_cmd[];
-extern uint8_t res_is_ok;
-extern uint32_t prev_tick;
-extern const uint32_t timeout;
-
-// Variables needed to receive command.
-extern uint8_t cmd_buffer[]; // cmd_buffer stores all the command when it is received.
-extern uint8_t cmd_buffer_index;
-extern char cmd_msg[];
-extern uint8_t cmd_msg_len;
-extern volatile uint8_t cmd_received;
-extern volatile uint8_t receiving_cmd;
-
-extern uint8_t gpgga_buffer[];
-extern uint8_t gpgga_buffer_index;
-extern char gpgga_msg[];
-extern uint8_t gpgga_msg_len;
-extern volatile uint8_t gpgga_received;
-extern volatile uint8_t receiving_gpgga;
-
+//#define CMD_BUFFER_SIZE 200
+//#define CMD_MESSAGE_SIZE 100
+//#define GPGGA_BUFFER_SIZE 300
+//#define GPGGA_MESSAGE_SIZE 300
+//
+//
+//typedef struct {
+//    uint8_t *buffer;
+//    uint8_t buffer_index;
+//    char *msg;
+//    uint8_t msg_len;
+//    volatile uint8_t received;
+//    volatile uint8_t receiving;
+//} SIM7600_Message;
+//
+//typedef struct {
+//    const char *apn;
+//    const char *host;
+//    int port;
+//    char *will_message;
+//    const char *topic_will;
+//    const char *topic_cmd;
+//    const char *topic_sensor;
+//
+//    const uint32_t timeout;
+//    uint8_t received_byte;
+//
+//    SIM7600_Message cmd;
+//    SIM7600_Message gpgga;
+//
+//    UART_HandleTypeDef *huart_sim;
+//    UART_HandleTypeDef *huart_log;
+//    TIM_HandleTypeDef *pwm_timer;
+//    uint32_t tim_channel;
+//
+//} SIM7600_Context;
+//
+//extern SIM7600_Context sim_ctx;
 
 // Public methods
-void sim_huart_init(UART_HandleTypeDef *p_huart_sim, UART_HandleTypeDef *p_huart_log);
+void sim_huart_init(UART_HandleTypeDef *p_huart_sim,
+		UART_HandleTypeDef *p_huart_log, TIM_HandleTypeDef *pwm_timer,
+		uint32_t tim_channel);
 void sim_mqtt_gps_init(void);
-void sim_handle_byte(UART_HandleTypeDef *huart);
-void sim_publish_mqtt_msg(char *msg, uint8_t msg_length);
-
+void sim_handle_byte();
+void sim_process_received_data();
 
 #endif // SIM7600_H

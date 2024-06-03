@@ -104,11 +104,7 @@ int main(void) {
 			strlen("App started.\r\n"),
 			HAL_MAX_DELAY);
 
-	// 1. MQTT and GPS setup.
-	sim_huart_init(&huart3, &huart2);
-	sim_mqtt_gps_init();
-
-	// 2. Timer4 PWM set up.
+	// 1. Timer4 PWM set up.
 	if (HAL_TIM_Base_Start_IT(&htim4) != HAL_OK) {
 		HAL_UART_Transmit(&huart2,
 				(uint8_t*) "Error initializing base timer\r\n",
@@ -123,53 +119,17 @@ int main(void) {
 				HAL_MAX_DELAY);
 		Error_Handler();
 	}
+
+	// 2. MQTT and GPS setup.
+	sim_huart_init(&huart3, &huart2, &htim4, TIM_CHANNEL_4);
+	sim_mqtt_gps_init();
+
 	/* USER CODE END 2 */
 
 	/* USER CODE BEGIN WHILE */
 	while (1) {
 
-		// 1. Log command from SIM module
-		if (cmd_received) {
-			cmd_received = 0;
-
-			// Log the response received by the SIM module.
-			HAL_UART_Transmit(&huart2, (uint8_t*) cmd_msg, cmd_msg_len,
-			HAL_MAX_DELAY);
-
-			if (strstr((char*) cmd_msg, "forward")) {
-				// Front Left
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 1);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 40000);
-
-			} else if (strstr((char*) cmd_msg, "backward")) {
-				// Front Left
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 1);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 10000);
-
-			} else if (strstr((char*) cmd_msg, "stop")) {
-				// Front Left
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_4, 0);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_5, 0);
-				__HAL_TIM_SET_COMPARE(&htim4, TIM_CHANNEL_4, 0);
-
-			}
-
-			// Ready to receive next command.
-			cmd_buffer_index = 0;
-			cmd_msg_len = 0;
-		}
-
-		// 2. Send GPGGA string to MQTT
-		if (gpgga_received) {
-			gpgga_received = 0;
-			// Publish and ready to receive next command.
-			sim_publish_mqtt_msg(gpgga_msg, gpgga_msg_len);
-			gpgga_buffer_index = 0;
-			gpgga_msg_len = 0;
-
-		}
+		sim_process_received_data();
 
 		/* USER CODE END WHILE */
 
@@ -497,7 +457,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
 	// Received a byte from SIM7600 module.
 	if (huart == &huart3) {
-		sim_handle_byte(&huart3);
+		sim_handle_byte();
 	}
 }
 
