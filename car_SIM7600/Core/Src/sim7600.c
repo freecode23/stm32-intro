@@ -194,6 +194,7 @@ void sim_process_received_data(void) {
 
 	// 1. Run motor command.
 	if (cmd_received) {
+		// Reset flag.
 		cmd_received = 0;
 		HAL_UART_Transmit(huart_log, (uint8_t*) cmd_msg, cmd_msg_len,
 		HAL_MAX_DELAY);
@@ -215,14 +216,19 @@ void sim_process_received_data(void) {
 
 		}
 
+		// Reset buffer.
 		cmd_buffer_index = 0;
 		cmd_msg_len = 0;
 	}
 
 	// 2. Publish GPGGA message to MQTT.
 	if (gpgga_received) {
+		// Reset flag.
 		gpgga_received = 0;
+
 		publish_mqtt_msg(gpgga_msg, gpgga_msg_len);
+
+		// Reset buffer.
 		gpgga_buffer_index = 0;
 		gpgga_msg_len = 0;
 	}
@@ -301,7 +307,7 @@ static void extract_cmd(void) {
 		break;
 	}
 
-	// Copy the message from buffer and store to cmd_msg.
+	// Copy the message from buffer to final array.
 	cmd_msg_len = end_i - start_i;
 	if (cmd_msg_len > sizeof(cmd_msg) - 1) {
 		cmd_msg_len = sizeof(cmd_msg) - 1; // Prevent buffer overflow
@@ -319,7 +325,7 @@ static void extract_cmd(void) {
  */
 static void extract_gpgga(void) {
 
-	// Copy buffer to the final message.
+	// Copy the message from buffer to final array.
 	gpgga_msg_len = gpgga_buffer_index;
 	strncpy(gpgga_msg, (char*) gpgga_buffer, gpgga_msg_len);
 	gpgga_msg[gpgga_msg_len] = '\0';
